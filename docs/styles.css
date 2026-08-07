@@ -52,6 +52,20 @@ body {
   font-weight: 600;
 }
 
+.templates {
+  margin: 1.5rem 0;
+}
+
+.templates h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.4rem;
+}
+
+.templates ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
 .panel {
   border: 1px solid var(--border);
   border-radius: 8px;
