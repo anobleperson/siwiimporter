@@ -1,0 +1,11 @@
+# For now this repo only publishes the docs/ web app (GitHub Pages source).
+# Everything else (tests, examples, dev docs) is excluded until it's been
+# checked over for PII / is ready to publish.
+*
+!docs/
+!docs/**
+!.gitignore
+!CLAUDE.md
+
+# OS cruft (in case docs/ ever contains one)
+.DS_Store
