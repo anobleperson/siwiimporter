@@ -4,6 +4,7 @@ import { generateImportRows, OUTPUT_HEADER, rowToCsvArray } from "./transform.js
 import { serializeCsv } from "./csv.js";
 import { triggerDownload } from "./download.js";
 import { copyToClipboard } from "./clipboard.js";
+import { formatClipboardRows } from "./clipboardFormat.js";
 
 const justgoInput = document.getElementById("justgo-file");
 const yearInputs = document.querySelectorAll('input[name="race-year"]');
@@ -20,6 +21,7 @@ const copyBtnDefaultLabel = copyBtn.textContent;
 let copyBtnResetTimer = null;
 
 let latestCsvText = "";
+let latestClipboardText = "";
 
 const thisYear = new Date().getFullYear();
 for (const input of yearInputs) {
@@ -37,7 +39,7 @@ downloadBtn.addEventListener("click", () => {
 });
 copyBtn.addEventListener("click", async () => {
   try {
-    await copyToClipboard(latestCsvText);
+    await copyToClipboard(latestClipboardText);
     showCopyFeedback("Copied!");
   } catch (err) {
     showCopyFeedback("Copy failed");
@@ -88,10 +90,12 @@ async function run() {
     downloadBtn.disabled = true;
     copyBtn.disabled = true;
     latestCsvText = "";
+    latestClipboardText = "";
     return;
   }
 
   latestCsvText = serializeCsv([OUTPUT_HEADER, ...rows.map(rowToCsvArray)]);
+  latestClipboardText = formatClipboardRows(rows);
   downloadBtn.disabled = rows.length === 0;
   copyBtn.disabled = rows.length === 0;
   statusEl.textContent = `${rows.length} row${rows.length === 1 ? "" : "s"} ready to download.`;
@@ -108,6 +112,7 @@ function clear() {
   downloadBtn.disabled = true;
   copyBtn.disabled = true;
   latestCsvText = "";
+  latestClipboardText = "";
 }
 
 function showCopyFeedback(message) {
