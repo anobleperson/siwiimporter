@@ -10,9 +10,9 @@
   <main>
     <h1>SIWI Importer</h1>
     <p class="lede">
-      Cross-references a JustGo attendee export with a Canoe123 (SiwiData) project file
-      and generates a CSV ready to paste into Canoe123's Import tab. Everything runs in
-      your browser — no files are uploaded anywhere.
+      Cross-references a JustGo attendee export against Canoe123's standard classes and
+      categories and generates a CSV ready to paste into Canoe123's Import tab.
+      Everything runs in your browser — no files are uploaded anywhere.
     </p>
 
     <div class="uploads">
@@ -20,17 +20,25 @@
         <span>JustGo attendee CSV</span>
         <input type="file" id="justgo-file" accept=".csv" />
       </label>
-      <label class="upload">
-        <span>Siwi project XML</span>
-        <input type="file" id="siwi-file" accept=".xml" />
-      </label>
     </div>
+
+    <fieldset class="race-year">
+      <legend>Race year</legend>
+      <label>
+        <input type="radio" name="race-year" value="this" checked />
+        This year (<span class="year-value"></span>)
+      </label>
+      <label>
+        <input type="radio" name="race-year" value="next" />
+        Next year (<span class="year-value"></span>)
+      </label>
+    </fieldset>
 
     <section class="templates">
       <h2>Siwi templates</h2>
       <p class="lede">
         Starter Canoe123 project files with classes and categories already configured.
-        Open one in Canoe123, or use it as the "Siwi project XML" above.
+        Open one directly in Canoe123.
       </p>
       <ul>
         <li>

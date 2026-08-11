@@ -1,11 +1,23 @@
-# For now this repo only publishes the docs/ web app (GitHub Pages source).
-# Everything else (tests, examples, dev docs) is excluded until it's been
-# checked over for PII / is ready to publish.
+# This repo publishes docs/ (GitHub Pages source). tests/, examples/, and
+# documentation/ are also tracked now that their contents have been checked
+# over for PII and anonymized (see CLAUDE.md's PII rule) — keep it that way
+# for anything added under them going forward.
 *
 !docs/
 !docs/**
+!examples/
+!examples/**
+!documentation/
+!documentation/**
+!test/
+!test/**
+!package.json
+!package-lock.json
 !.gitignore
 !CLAUDE.md
 
-# OS cruft (in case docs/ ever contains one)
+# OS cruft
 .DS_Store
+
+# Local machine-specific tool settings, dependency artifacts
+node_modules/

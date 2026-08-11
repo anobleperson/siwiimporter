@@ -1,4 +1,4 @@
-// Core cross-reference pipeline: JustGo records + Siwi project config ->
+// Core cross-reference pipeline: JustGo records + class/category config ->
 // Canoe123 import rows. Pure, DOM-free.
 //
 // Design: never early-return on a per-row/per-token problem. Every issue is
@@ -8,7 +8,7 @@
 // issue was" requirement.
 
 import { parseAustralianDate, stripClubCode } from "./justgo.js";
-import { findCategory } from "./siwiXml.js";
+import { findCategory } from "./categories.js";
 import { countryNameToNoc } from "./noc.js";
 
 export const OUTPUT_HEADER = [
@@ -46,16 +46,16 @@ export const OUTPUT_HEADER = [
 
 /**
  * @param {import("./justgo.js").JustGoRecord[]} records
- * @param {import("./siwiXml.js").SiwiConfig} siwiConfig
+ * @param {{classes: Map<string, import("./categories.js").ClassDef>, competitionYear: number}} classesConfig
  * @returns {{rows: OutputRow[], errors: Issue[], warnings: Issue[]}}
  */
-export function generateImportRows(records, siwiConfig) {
+export function generateImportRows(records, classesConfig) {
   const rows = [];
   const errors = [];
   const warnings = [];
   const nameIndex = buildNameIndex(records);
   const consumedC2 = new Set();
-  const ctx = { siwiConfig, rows, errors, warnings };
+  const ctx = { classesConfig, rows, errors, warnings };
 
   for (const record of records) {
     if (record.classTokens.length === 0) continue; // not competing, silent skip
@@ -126,11 +126,9 @@ function processSolo(record, classToken, ctx) {
   }
 
   const classId = letter + classToken;
-  const classDef = ctx.siwiConfig.classes.get(classId);
+  const classDef = ctx.classesConfig.classes.get(classId);
   if (!classDef) {
-    ctx.errors.push(
-      issue(record, "Class", classId, `Class "${classId}" is not defined in this Siwi project.`)
-    );
+    ctx.errors.push(issue(record, "Class", classId, `Class "${classId}" is not a recognized class.`));
     return;
   }
 
@@ -141,18 +139,16 @@ function processSolo(record, classToken, ctx) {
   }
 
   // Some classes (e.g. team/forerunner/mixed-double classes) have no
-  // <Categories> defined at all in Siwi — there's nothing to compute an age
-  // bracket against, so those paddlers simply get no category, not an error.
+  // categories defined at all — there's nothing to compute an age bracket
+  // against, so those paddlers simply get no category, not an error.
   let category = null;
   if (classDef.categories.length > 0) {
-    if (ctx.siwiConfig.competitionYear == null) {
-      ctx.errors.push(
-        issue(record, "Schedule", undefined, "Could not determine the competition year from the Siwi project's schedule.")
-      );
+    if (ctx.classesConfig.competitionYear == null) {
+      ctx.errors.push(issue(record, "Race year", undefined, "No race year was selected."));
       return;
     }
 
-    const age = ctx.siwiConfig.competitionYear - dob.year;
+    const age = ctx.classesConfig.competitionYear - dob.year;
     category = findCategory(classDef, age);
     if (!category) {
       ctx.errors.push(
@@ -243,11 +239,9 @@ function processC2(record, nameIndex, consumedC2, ctx) {
   }
 
   const crewClassId = letter + "C2";
-  const classDef = ctx.siwiConfig.classes.get(crewClassId);
+  const classDef = ctx.classesConfig.classes.get(crewClassId);
   if (!classDef) {
-    ctx.errors.push(
-      issue(record, "Class", crewClassId, `Class "${crewClassId}" is not defined in this Siwi project.`)
-    );
+    ctx.errors.push(issue(record, "Class", crewClassId, `Class "${crewClassId}" is not a recognized class.`));
     return;
   }
 
@@ -262,19 +256,17 @@ function processC2(record, nameIndex, consumedC2, ctx) {
     return;
   }
 
-  // As with solo classes, a crew class with no <Categories> defined (e.g.
+  // As with solo classes, a crew class with no categories defined (e.g.
   // Mixed C2 in the canonical set) simply has no category, not an error.
   let category = null;
   if (classDef.categories.length > 0) {
-    if (ctx.siwiConfig.competitionYear == null) {
-      ctx.errors.push(
-        issue(record, "Schedule", undefined, "Could not determine the competition year from the Siwi project's schedule.")
-      );
+    if (ctx.classesConfig.competitionYear == null) {
+      ctx.errors.push(issue(record, "Race year", undefined, "No race year was selected."));
       return;
     }
 
     const olderBirthYear = Math.min(dobA.year, dobB.year);
-    const age = ctx.siwiConfig.competitionYear - olderBirthYear;
+    const age = ctx.classesConfig.competitionYear - olderBirthYear;
     category = findCategory(classDef, age);
     if (!category) {
       ctx.errors.push(

@@ -6,10 +6,8 @@
 // documentation/classes-and-categories.md for the human-readable list and
 // how this file was produced.
 //
-// Used as a FALLBACK only: classes/categories from the uploaded Siwi
-// project XML always take precedence (see mergeClassesWithFallback in
-// siwiXml.js). This only fills in classes the uploaded project itself
-// did not define.
+// This is the sole source of classes/categories for the importer — no
+// per-event Siwi project file is uploaded or consulted.
 
 /** @type {[string, {classId: string, categories: {catId: string, firstYear: number, lastYear: number}[]}][]} */
 const ENTRIES = [

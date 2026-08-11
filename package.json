@@ -1,0 +1,10 @@
+{
+  "name": "siwiimporter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static client-side tool that cross-references a JustGo attendee CSV against Canoe123's standard classes and categories to generate a ready-to-import participants CSV.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}

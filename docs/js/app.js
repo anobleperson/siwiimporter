@@ -1,12 +1,11 @@
 import { parseJustGoCsv } from "./justgo.js";
-import { parseSiwiProject, mergeClassesWithFallback } from "./siwiXml.js";
 import { CANONICAL_CLASSES } from "./canonicalClasses.js";
 import { generateImportRows, OUTPUT_HEADER, rowToCsvArray } from "./transform.js";
 import { serializeCsv } from "./csv.js";
 import { triggerDownload } from "./download.js";
 
 const justgoInput = document.getElementById("justgo-file");
-const siwiInput = document.getElementById("siwi-file");
+const yearInputs = document.querySelectorAll('input[name="race-year"]');
 const fatalEl = document.getElementById("fatal");
 const errorsEl = document.getElementById("errors");
 const errorsListEl = document.getElementById("errors-list");
@@ -18,8 +17,17 @@ const statusEl = document.getElementById("status");
 
 let latestCsvText = "";
 
+const thisYear = new Date().getFullYear();
+for (const input of yearInputs) {
+  const label = input.closest("label")?.querySelector(".year-value");
+  if (!label) continue;
+  label.textContent = input.value === "next" ? String(thisYear + 1) : String(thisYear);
+}
+
 justgoInput.addEventListener("change", run);
-siwiInput.addEventListener("change", run);
+for (const input of yearInputs) {
+  input.addEventListener("change", run);
+}
 downloadBtn.addEventListener("click", () => {
   triggerDownload(latestCsvText, "siwi-import.csv");
 });
@@ -30,41 +38,41 @@ downloadBtn.addEventListener("click", () => {
 // origin — see the inline script in index.html).
 window.__siwiImporterReady = true;
 
+function selectedRaceYear() {
+  const checked = Array.from(yearInputs).find((input) => input.checked);
+  return checked?.value === "next" ? thisYear + 1 : thisYear;
+}
+
 async function run() {
   clear();
 
   const justgoFile = justgoInput.files[0];
-  const siwiFile = siwiInput.files[0];
-  if (!justgoFile || !siwiFile) {
-    statusEl.textContent = "Upload both files to begin.";
+  if (!justgoFile) {
+    statusEl.textContent = "Upload a JustGo attendee CSV to begin.";
     return;
   }
 
   statusEl.textContent = "Processing…";
 
-  let records, siwiConfig;
+  let records;
   try {
-    const [justgoText, siwiText] = await Promise.all([justgoFile.text(), siwiFile.text()]);
+    const justgoText = await justgoFile.text();
     records = parseJustGoCsv(justgoText);
-    const project = parseSiwiProject(siwiText);
-    siwiConfig = {
-      classes: mergeClassesWithFallback(project.classes, CANONICAL_CLASSES),
-      competitionYear: project.competitionYear,
-    };
   } catch (err) {
     statusEl.textContent = "";
     renderFatal(err);
     return;
   }
 
-  const { rows, errors, warnings } = generateImportRows(records, siwiConfig);
+  const classesConfig = { classes: CANONICAL_CLASSES, competitionYear: selectedRaceYear() };
+  const { rows, errors, warnings } = generateImportRows(records, classesConfig);
 
   renderIssues(errorsEl, errorsListEl, errors);
   renderIssues(warningsEl, warningsListEl, warnings);
   renderPreview(rows);
 
   if (errors.length > 0) {
-    statusEl.textContent = `${errors.length} error${errors.length === 1 ? "" : "s"} found — fix these in your source files and re-upload.`;
+    statusEl.textContent = `${errors.length} error${errors.length === 1 ? "" : "s"} found — fix these in your JustGo CSV and re-upload.`;
     downloadBtn.disabled = true;
     latestCsvText = "";
     return;
