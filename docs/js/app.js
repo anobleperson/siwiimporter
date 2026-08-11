@@ -3,6 +3,7 @@ import { CANONICAL_CLASSES } from "./canonicalClasses.js";
 import { generateImportRows, OUTPUT_HEADER, rowToCsvArray } from "./transform.js";
 import { serializeCsv } from "./csv.js";
 import { triggerDownload } from "./download.js";
+import { copyToClipboard } from "./clipboard.js";
 
 const justgoInput = document.getElementById("justgo-file");
 const yearInputs = document.querySelectorAll('input[name="race-year"]');
@@ -13,7 +14,10 @@ const warningsEl = document.getElementById("warnings");
 const warningsListEl = document.getElementById("warnings-list");
 const previewEl = document.getElementById("preview");
 const downloadBtn = document.getElementById("download-btn");
+const copyBtn = document.getElementById("copy-btn");
 const statusEl = document.getElementById("status");
+const copyBtnDefaultLabel = copyBtn.textContent;
+let copyBtnResetTimer = null;
 
 let latestCsvText = "";
 
@@ -30,6 +34,14 @@ for (const input of yearInputs) {
 }
 downloadBtn.addEventListener("click", () => {
   triggerDownload(latestCsvText, "siwi-import.csv");
+});
+copyBtn.addEventListener("click", async () => {
+  try {
+    await copyToClipboard(latestCsvText);
+    showCopyFeedback("Copied!");
+  } catch (err) {
+    showCopyFeedback("Copy failed");
+  }
 });
 
 // Signals to the file:// fallback check in index.html that this module
@@ -74,12 +86,14 @@ async function run() {
   if (errors.length > 0) {
     statusEl.textContent = `${errors.length} error${errors.length === 1 ? "" : "s"} found — fix these in your JustGo CSV and re-upload.`;
     downloadBtn.disabled = true;
+    copyBtn.disabled = true;
     latestCsvText = "";
     return;
   }
 
   latestCsvText = serializeCsv([OUTPUT_HEADER, ...rows.map(rowToCsvArray)]);
   downloadBtn.disabled = rows.length === 0;
+  copyBtn.disabled = rows.length === 0;
   statusEl.textContent = `${rows.length} row${rows.length === 1 ? "" : "s"} ready to download.`;
 }
 
@@ -92,7 +106,16 @@ function clear() {
   warningsListEl.innerHTML = "";
   previewEl.innerHTML = "";
   downloadBtn.disabled = true;
+  copyBtn.disabled = true;
   latestCsvText = "";
+}
+
+function showCopyFeedback(message) {
+  window.clearTimeout(copyBtnResetTimer);
+  copyBtn.textContent = message;
+  copyBtnResetTimer = window.setTimeout(() => {
+    copyBtn.textContent = copyBtnDefaultLabel;
+  }, 1500);
 }
 
 function renderFatal(err) {
