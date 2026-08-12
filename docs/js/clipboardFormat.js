@@ -1,22 +1,39 @@
 // Formats OutputRow[] for pasting into Canoe123's Import tab grid. Pure, DOM-free.
 //
 // Canoe123's paste handler enforces tab-delimited fields, CRLF row endings,
-// no header row (columns are mapped positionally by the operator after
-// pasting), and no quoting — see
-// docs/import-tab-clipboard-format.md in the Canoe123 source tree for the
-// full spec this was derived from.
+// and no quoting; columns are mapped positionally by the operator via a
+// per-column dropdown after pasting — the app itself never auto-detects a
+// header row. See docs/import-tab-clipboard-format.md in the Canoe123
+// source tree for the full spec this was derived from.
 
 // FamilyName, GivenName, NOC, Birthdate, Club, Class, Category, Bib, Ranking, StartOrder.
 // Bib/Ranking/StartOrder are always blank — this app doesn't produce them —
 // but the columns are kept so positional mapping stays consistent.
 const CLIPBOARD_COLUMN_COUNT = 10;
 
+const CLIPBOARD_HEADER = [
+  "Family Name",
+  "Given Name",
+  "NOC",
+  "Birthdate",
+  "Club",
+  "Class",
+  "Category",
+  "Bib",
+  "Ranking",
+  "Start Order",
+];
+
 /**
  * @param {import("./transform.js").OutputRow[]} rows
  * @returns {string}
  */
 export function formatClipboardRows(rows) {
-  const lines = [];
+  // Canoe123 doesn't recognize this as a header — it lands as grid row 1
+  // like any other pasted row. It's included anyway so the operator has
+  // column labels to map against on the first paste; delete that row
+  // before "Save to Participants" or it'll be saved as a bogus entry.
+  const lines = [clipboardRow(CLIPBOARD_HEADER)];
   for (const row of rows) {
     lines.push(
       clipboardRow([row.familyName, row.givenName, row.noc, row.birthdate, row.club, row.classId, row.category])
