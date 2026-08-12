@@ -11,17 +11,19 @@
 // but the columns are kept so positional mapping stays consistent.
 const CLIPBOARD_COLUMN_COUNT = 10;
 
+// Matches the column labels shown in Canoe123's own Import tab dropdown
+// chooser (documentation/siwi-import-format.md), not the app's own naming.
 const CLIPBOARD_HEADER = [
   "Family Name",
-  "Given Name",
-  "NOC",
+  "G.Name",
+  "Ctry.",
   "Birthdate",
   "Club",
   "Class",
   "Category",
-  "Bib",
+  "Bib\\No.",
   "Ranking",
-  "Start Order",
+  "Start\\Order",
 ];
 
 /**
