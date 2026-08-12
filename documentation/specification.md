@@ -1,6 +1,7 @@
 # SIWI Importer — Specification
 
-Status: reflects the code in the repo as of 2026-08-08 (32/32 tests passing).
+Status: reflects the code in the repo as of 2026-08-12 (32/32 tests
+passing; the clipboard-copy feature, FR15, is verified manually only).
 
 ## 1. Purpose
 
@@ -9,9 +10,10 @@ for timing/results, but collects registrations through JustGo (an external
 event platform). Getting JustGo attendees into Canoe123 currently means
 manually re-typing each paddler's class and category. This app closes that
 gap: it takes a JustGo attendee CSV export, cross-references each entrant
-against Canoe123's standard classes/categories, and produces a CSV ready to
-paste into Canoe123's Import tab (column conventions documented in
-[`siwi-import-format.md`](siwi-import-format.md)).
+against Canoe123's standard classes/categories, and produces output ready
+for Canoe123's Import tab two ways: a downloadable CSV, or a "Copy to
+clipboard" button that pastes directly into the Import tab grid (column
+conventions documented in [`siwi-import-format.md`](siwi-import-format.md)).
 
 ## 2. Requirements
 
@@ -67,18 +69,45 @@ paste into Canoe123's Import tab (column conventions documented in
   mid-string club code inside a multi-club value must be preserved).
 - **FR11 — Birthdate output.** ISO `YYYY-MM-DD` format, to avoid
   locale-ambiguous `DateTime.TryParse` behavior on the Canoe123 side.
-- **FR12 — Output shape.** Header row: `Family Name, G.Name, 2nd Family
-  Name, 2nd G. Name, Ctry, Birthdate, Club, Class, Category` — matching the
-  UI labels in [`siwi-import-format.md`](siwi-import-format.md) so they're
-  recognizable in Canoe123's manual column-chooser dropdown.
-- **FR13 — Error/warning reporting.** Errors block CSV generation entirely
-  (no partial/best-effort file) and are shown with enough detail to act on:
-  which person, which source row, which field, and what was wrong. Warnings
-  never block generation.
+- **FR12 — Output shape (CSV download).** Header row: `Family Name, G.Name,
+  2nd Family Name, 2nd G. Name, Ctry, Birthdate, Club, Class, Category` —
+  matching the UI labels in [`siwi-import-format.md`](siwi-import-format.md)
+  so they're recognizable in Canoe123's manual column-chooser dropdown.
+  Comma-delimited, RFC4180-ish quoting via `csv.serializeCsv`.
+- **FR13 — Error/warning reporting.** Errors block generation entirely (no
+  partial/best-effort CSV or clipboard output) and are shown with enough
+  detail to act on: which person, which source row, which field, and what
+  was wrong. Warnings never block generation.
 - **FR14 — Download.** Once generation succeeds with zero errors, a preview
   table is shown and a "Download CSV" button becomes available, triggering a
   browser file download of the generated CSV.
-- **FR15 — Malformed-input handling.** A thrown parse error (unparseable
+- **FR15 — Copy to clipboard.** Alongside the download button, a "Copy to
+  clipboard" button becomes available under the same success condition,
+  copying output formatted for a direct paste into Canoe123's Import tab
+  grid rather than the CSV shape used for download:
+  - Tab-delimited fields, `\r\n` row endings, no CSV-style quoting — matches
+    the paste handler's parsing rules (`CheckAndTransformClipboardContent` /
+    `TransformClipboard` in `frmCanoe123.cs`), which has no escaping
+    mechanism at all.
+  - Row 1 is a label row using Canoe123's own column names — `Family Name,
+    G.Name, Ctry., Birthdate, Club, Class, Category, Bib\No., Ranking,
+    Start\Order` — for the operator's one-time positional column mapping.
+    Canoe123 doesn't auto-detect this as a header (every pasted row is
+    data), so it must be deleted before "Save to Participants" or it saves
+    as a bogus entry.
+  - Fixed 10-column positional order per row: Family Name, Given Name, NOC,
+    Birthdate, Club, Class, Category, Bib, Ranking, Start Order. The last
+    three are always blank (this app has no bib/ranking/start-order data)
+    but the columns are kept for alignment.
+  - C2 crews: unlike the CSV download (which uses dedicated "2nd Family
+    Name"/"2nd G.Name" columns), the clipboard format has no such columns —
+    Canoe123's paste handler instead expects the second crew member's name
+    on its own row directly below, name fields only. This requires the "2nd
+    C2 Name in 2nd row" toggle enabled in Canoe123, which is UI state this
+    app cannot set — documented as a prerequisite in the in-page hint text.
+  - Clicking the button shows transient "Copied!"/"Copy failed" feedback on
+    the button label for 1.5s.
+- **FR16 — Malformed-input handling.** A thrown parse error (unparseable
   file, `assertStableHeader` failure because JustGo's export layout
   changed) is caught and shown as a single fatal message, distinct from
   per-row issues.
@@ -118,6 +147,8 @@ docs/
     noc.js                country-name -> IOC/NOC code table, pure
     transform.js           core cross-reference pipeline incl. C2 pairing, pure
     download.js            Blob/anchor download trigger, DOM-only
+    clipboard.js            navigator.clipboard.writeText wrapper w/ execCommand fallback, DOM-only
+    clipboardFormat.js      OutputRow[] -> Canoe123 Import-tab paste text, pure
     app.js                 wires file input + race-year radios, orchestrates, renders results
 documentation/            reference docs, not deployed by GitHub Pages
   specification.md         this document
@@ -149,14 +180,16 @@ transform.generateImportRows(records, {classes: CANONICAL_CLASSES, competitionYe
       ▼
 { rows, errors, warnings }
       │
-      ├─ errors.length > 0 → render errors panel, download disabled, no CSV built
+      ├─ errors.length > 0 → render errors panel, download+copy disabled, no output built
       └─ errors.length === 0 → csv.serializeCsv(header + rows) held in memory
                                   → "Download CSV" button → download.triggerDownload()
+                                clipboardFormat.formatClipboardRows(rows) held in memory
+                                  → "Copy to clipboard" button → clipboard.copyToClipboard()
 ```
 
-`app.js` is the only module that touches the DOM outside of `download.js`;
-every other module is pure functions on plain data, which is what makes them
-unit-testable under Node.
+`app.js` is the only module that touches the DOM outside of `download.js`
+and `clipboard.js`; every other module is pure functions on plain data,
+which is what makes them unit-testable under Node.
 
 ### 3.3 Module responsibilities
 
@@ -200,13 +233,24 @@ unit-testable under Node.
   derivedValue?, message}`.
 - **`download.js`** — `triggerDownload(csvText, filename)` via `Blob` +
   temporary `<a>` click.
+- **`clipboardFormat.js`** — `formatClipboardRows(rows)` → tab-delimited,
+  `\r\n`-joined text per FR15: a Canoe123-labeled header row, then per row
+  the 10-column positional layout, with a C2 partner's name emitted as a
+  separate following row. `sanitizeField` strips stray tab/CR/LF from a
+  value (the paste format has no quoting mechanism to protect against
+  those splitting a row into the wrong columns).
+- **`clipboard.js`** — `copyToClipboard(text)`: `navigator.clipboard.writeText`
+  where available, else a temporary off-screen `<textarea>` +
+  `document.execCommand("copy")` fallback for non-secure/older contexts.
 - **`app.js`** — file-input + race-year radio listeners → read the JustGo
   file → `justgo.parseJustGoCsv` → build `{classes: CANONICAL_CLASSES,
   competitionYear}` (from the selected radio) → `transform.generateImportRows`
-  → render an errors panel (blocks/hides the download button when
+  → render an errors panel (blocks/hides the download and copy buttons when
   non-empty), a warnings panel (never blocks), and a preview table; download
-  button calls `csv.serializeCsv` + `download.triggerDownload`. A thrown
-  parse error is caught and shown as a single fatal message.
+  button calls `csv.serializeCsv` + `download.triggerDownload`, copy button
+  calls `clipboardFormat.formatClipboardRows` + `clipboard.copyToClipboard`
+  and shows transient "Copied!"/"Copy failed" feedback. A thrown parse error
+  is caught and shown as a single fatal message.
 
 ## 4. Key design decisions
 
@@ -269,6 +313,12 @@ external devDependencies. 32/32 passing as of this writing.
 | `transform.test.js` | full end-to-end against the real example CSV (6 rows, zero errors/warnings), output row shape, unrecognized-class error, out-of-range-age error, no-categories class producing a blank category (not an error), unmapped-country warning |
 | `transform.c2.test.js` | hand-crafted fixtures (the real example file has no C2 usage): valid pair, partner's other solo class still emitted separately, blank/not-found/ambiguous partner name, gender mismatch, missing crew `ClassId` |
 
+`clipboardFormat.js` (FR15) has no automated unit test yet — it's currently
+verified manually only (see [§5.1](#51-manual-end-to-end-verification),
+step 4a). A follow-up test file (`clipboardFormat.test.js`) covering the
+label row, 10-column layout, and the C2 partner-on-next-row case would close
+that gap.
+
 Representative fixtures use real people from the example JustGo export by
 first name only where useful for readability; no PII beyond what's already
 present in the gitignored `examples/` files is embedded in tracked test
@@ -286,6 +336,11 @@ code.
 4. Download the CSV; confirm the header matches the 9 labels in FR12
    exactly, line count is 7, and a multi-club `Organisation` value
    round-trips through quoting without corruption.
+4a. Click "Copy to clipboard"; confirm the clipboard content (FR15) has no
+    commas, is tab-delimited with `\r\n` row endings, row 1 reads `Family
+    Name  G.Name  Ctry.  Birthdate  Club  Class  Category  Bib\No.  Ranking
+    Start\Order`, and each data row has the fixed 10-column layout with the
+    last three columns blank.
 5. Toggle "Next year" and re-run; confirm the preview regenerates using
    `competitionYear = thisYear + 1` (rows may shift category or start
    erroring if a paddler ages out of every bracket — expected).
@@ -300,7 +355,14 @@ code.
 
 - [`siwi-import-format.md`](siwi-import-format.md) — reverse-engineered
   reference for Canoe123's own Import tab column conventions
-  (`frmCanoe123.cs`), which FR12's output header is built to match.
+  (`frmCanoe123.cs`), which FR12's CSV header and FR15's clipboard label row
+  are both built to match.
 - [`classes-and-categories.md`](classes-and-categories.md) — full canonical
   class/category listing and the `canonicalClasses.js` regeneration
   procedure.
+- Canoe123's Import-tab *paste-handling* rules (delimiter priority, row
+  terminator handling, the C2-partner-on-next-row behavior) were
+  reverse-engineered separately from `frmCanoe123.cs`
+  (`CheckAndTransformClipboardContent`/`TransformClipboard`/
+  `ProcessImportData`) and aren't re-derivable from this repo alone; FR15
+  above is the durable record of those findings inside this project.
