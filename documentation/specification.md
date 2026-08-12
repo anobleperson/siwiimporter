@@ -113,11 +113,11 @@ conventions documented in [`siwi-import-format.md`](siwi-import-format.md)).
   changed) is caught and shown as a single fatal message, distinct from
   per-row issues.
 
-The following three are **optional, checkbox-controlled outputs.** Each
-defaults to off/unchecked, and when unchecked leaves the generated output
-byte-for-byte unchanged from FR12/FR15. They're independent of each other
-and may be combined in any combination; toggling any of them re-runs
-generation immediately, like the race-year radios.
+The following three are **optional, checkbox-controlled outputs, checked
+by default.** Unchecking all three leaves the generated output byte-for-byte
+unchanged from FR12/FR15. They're independent of each other and may be
+combined in any combination; toggling any of them re-runs generation
+immediately, like the race-year radios.
 
 - **FR17 — Normalize Names.** When checked, every row's Family Name is
   upper-cased and Given Name is put in simple title case (the character
@@ -474,14 +474,16 @@ code.
    matching partner names/gender, and confirm the app reports the known
    "not a recognized class" error for `MC2`/`WC2` per [§4.3](#43-known-open-issue--same-gender-c2-crews)
    rather than crashing.
-6a. Check all three "Optional output" boxes (FR17-19) with the example CSV
-    loaded. Confirm: the preview and both outputs gain a trailing Bib
-    column; two `FORE RUNNER 1`/`FORE RUNNER 2` rows (class `FR`, bib 1/2)
-    appear first; every name is upper/title-cased; rows are grouped Women
-    then Men rather than in upload order, sorted youngest-first within each
-    group; and the first Men bib rounds up to the next multiple of 5 past
-    the last Women bib (never landing exactly on the boundary). Uncheck
-    each independently and confirm the output reverts correctly.
+6a. With the example CSV loaded, confirm all three "Optional output" boxes
+    (FR17-19) are checked by default and that: the preview and both outputs
+    have a trailing Bib column; two `FORE RUNNER 1`/`FORE RUNNER 2` rows
+    (class `FR`, bib 1/2) appear first; every name is upper/title-cased;
+    rows are grouped Women then Men rather than in upload order, sorted
+    youngest-first within each group; and the first Men bib rounds up to
+    the next multiple of 5 past the last Women bib (never landing exactly
+    on the boundary). Uncheck each independently and confirm the output
+    reverts correctly, and that unchecking all three reproduces FR12/FR15
+    byte-for-byte.
 7. `npm test` passes.
 
 ## 6. Related documents
