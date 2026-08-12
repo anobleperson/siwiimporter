@@ -1,9 +1,8 @@
 # SIWI Importer — Specification
 
-Status: reflects the code in the repo as of 2026-08-12 (32/32 tests
-passing; the clipboard-copy feature, FR15, is verified manually only).
-FR17–FR19 (§2.1) are **planned, not yet implemented** — see [§7](#7-planned-enhancements--checkbox-controlled-optional-outputs)
-for the implementation sketch.
+Status: reflects the code in the repo as of 2026-08-12 (45/45 tests
+passing). `clipboardFormat.js` (FR15) is still verified manually only —
+see [§5](#5-testing-strategy).
 
 ## 1. Purpose
 
@@ -114,32 +113,38 @@ conventions documented in [`siwi-import-format.md`](siwi-import-format.md)).
   changed) is caught and shown as a single fatal message, distinct from
   per-row issues.
 
-The following three are **optional, checkbox-controlled outputs — planned,
-not yet implemented.** Each defaults to off/unchecked, and when unchecked
-leaves today's generated output byte-for-byte unchanged. They're
-independent of each other and may be combined in any combination.
+The following three are **optional, checkbox-controlled outputs.** Each
+defaults to off/unchecked, and when unchecked leaves the generated output
+byte-for-byte unchanged from FR12/FR15. They're independent of each other
+and may be combined in any combination; toggling any of them re-runs
+generation immediately, like the race-year radios.
 
-- **FR17 — Normalize Names *(planned)*.** When checked, every row's Family
-  Name is upper-cased and Given Name is put in simple title case (the
-  character after the start of the string or after each space/hyphen is
-  capitalized, everything else lowercased — this doesn't special-case
-  apostrophes like `O'Brien` or embedded capitals like `McDonald`; expect to
-  revisit the algorithm once checked against real names). Applies to
+- **FR17 — Normalize Names.** When checked, every row's Family Name is
+  upper-cased and Given Name is put in simple title case (the character
+  after the start of the string or after each space/hyphen is capitalized,
+  everything else lowercased — this doesn't special-case apostrophes like
+  `O'Brien` or embedded capitals like `McDonald`; expect to revisit the
+  algorithm once checked against real names). Applies to
   `familyName`/`givenName`/`familyName2`/`givenName2` on every row,
   including the synthetic Forerunner rows from FR18 if both are enabled
-  together (their Family Name would become e.g. `FORE RUNNER 1`).
-- **FR18 — Forerunner *(planned)*.** When checked, exactly two synthetic
-  rows are added ahead of every JustGo-derived row: Family Name `Fore
-  Runner 1` / `Fore Runner 2`, Given Name blank, Class `FR` (the existing
-  ungendered canonical class with zero categories — see
-  `canonicalClasses.js`), every other field (NOC, Birthdate, Club, Category,
-  2nd Family/Given Name) blank. These two rows always exist together or not
-  at all — there's no way to add just one — and aren't validated against
-  JustGo data since they don't come from it.
-- **FR19 — Allocate Bibs *(planned)*.** When checked, every row (including
-  FR18's Forerunner rows, if also enabled) gets a Bib number, added as a new
-  Bib column to both the CSV download (FR12) and the clipboard paste output
-  (FR15) — the column only appears when this box is checked.
+  together (their Family Name becomes e.g. `FORE RUNNER 1`). Applied last,
+  after FR18/FR19, so it never affects sorting/grouping upstream of it.
+- **FR18 — Forerunner.** When checked, exactly two synthetic rows are added
+  ahead of every JustGo-derived row: Family Name `Fore Runner 1` / `Fore
+  Runner 2`, Given Name blank, Class `FR` (the existing ungendered canonical
+  class with zero categories — see `canonicalClasses.js`), every other
+  field (NOC, Birthdate, Club, Category, 2nd Family/Given Name) blank.
+  These two rows always exist together or not at all — there's no way to
+  add just one — and aren't validated against JustGo data since they don't
+  come from it.
+- **FR19 — Allocate Bibs.** When checked, every row (including FR18's
+  Forerunner rows, if also enabled) gets a Bib number, added as a new Bib
+  column to both the CSV download (FR12) and the clipboard paste output
+  (FR15) — the column only appears when this box is checked. **The output
+  row order itself also changes** to match bib order (Forerunners, then
+  Women, then Men) rather than preserving JustGo upload order — this is a
+  start-list feature, so rows sorted any other way while carrying
+  sequential bibs would read as broken.
 
   Allocation runs in three fixed groups, in this order:
   1. **Forerunners** (if FR18 is enabled) — bib 1, then 2, in the order
@@ -153,8 +158,8 @@ independent of each other and may be combined in any combination.
   birthYear`; for a C2 crew row, this is the older partner's age per FR8),
   then alphabetically by Family Name, then Given Name, to break ties. This
   sorts correctly even for classes with no defined category (FR6), since
-  age is computed from birthdate directly rather than parsed from the
-  category id.
+  age is computed from birthdate directly (`categoryAge` on `OutputRow`)
+  rather than parsed from the category id.
 
   Bib numbers are assigned sequentially starting at 1, one bib per unique
   person (matched via the same normalized-name key FR8 already uses for C2
@@ -174,14 +179,10 @@ independent of each other and may be combined in any combination.
   group" case to handle, since the rounding rule already only cares about
   the running highest bib, not which named group produced it.
 
-  **Open question, not yet confirmed:** a C2 crew is written as one
-  combined row (`familyName`/`givenName` for the primary paddler,
-  `familyName2`/`givenName2` for the partner). The current assumption is
-  that row's Bib reflects the *primary* paddler's bib only; if the partner
-  also races solo elsewhere and gets their own bib there, it isn't
-  reconciled with the crew row. This is low-stakes today since same-gender
-  C2 crews can't currently generate successfully at all (§4.3) — revisit
-  once that's resolved.
+  **Open question, not yet confirmed** (see [§4.4](#44-open-question--c2-crew-bib-allocation)):
+  a C2 crew is written as one combined row. The current behavior is that
+  row's Bib reflects the *primary* paddler's bib only; the partner doesn't
+  get a bib of their own on that row.
 
 ### 2.2 Non-functional requirements
 
@@ -220,7 +221,10 @@ docs/
     download.js            Blob/anchor download trigger, DOM-only
     clipboard.js            navigator.clipboard.writeText wrapper w/ execCommand fallback, DOM-only
     clipboardFormat.js      OutputRow[] -> Canoe123 Import-tab paste text, pure
-    app.js                 wires file input + race-year radios, orchestrates, renders results
+    nameCase.js             FR17: family/given name casing, pure
+    forerunners.js          FR18: synthetic Forerunner OutputRow builder, pure
+    bibAllocation.js        FR19: bib numbering + group reordering, pure
+    app.js                 wires file input + race-year radios + option checkboxes, orchestrates, renders results
 documentation/            reference docs, not deployed by GitHub Pages
   specification.md         this document
   siwi-import-format.md     Canoe123 Import-tab column reference
@@ -233,6 +237,9 @@ test/                      dev-only, not deployed
   noc.test.js
   transform.test.js
   transform.c2.test.js     hand-crafted fixtures (example JustGo file has no C2 usage)
+  nameCase.test.js
+  forerunners.test.js
+  bibAllocation.test.js
 examples/                  gitignored — real attendee exports, PII (see CLAUDE.md)
 package.json               no runtime/test dependencies; `npm test` only
 ```
@@ -252,7 +259,11 @@ transform.generateImportRows(records, {classes: CANONICAL_CLASSES, competitionYe
 { rows, errors, warnings }
       │
       ├─ errors.length > 0 → render errors panel, download+copy disabled, no output built
-      └─ errors.length === 0 → csv.serializeCsv(header + rows) held in memory
+      └─ errors.length === 0 → optional steps, each gated on its checkbox (FR17-19):
+                                  forerunners.buildForerunnerRows() prepended (FR18)
+                                  → bibAllocation.allocateBibs() adds .bib, reorders into bib order (FR19)
+                                  → rows.map(nameCase.normalizeRowNames) (FR17, applied last)
+                                → csv.serializeCsv(header + rows) held in memory
                                   → "Download CSV" button → download.triggerDownload()
                                 clipboardFormat.formatClipboardRows(rows) held in memory
                                   → "Copy to clipboard" button → clipboard.copyToClipboard()
@@ -301,27 +312,54 @@ which is what makes them unit-testable under Node.
   partner's other solo tokens process normally. Never early-returns on
   error at the file level — always finishes the full pass so `errors` is
   complete. `Issue` shape: `{severity, sourceRowIndex, person, field,
-  derivedValue?, message}`.
+  derivedValue?, message}`. Every `OutputRow` also carries `categoryAge`
+  (`competitionYear − birth year`, computed whenever a race year is
+  available, even for classes with no `Category` — see FR19) and exports
+  `normalizeName(first, last)`, the same normalized-name key FR8 uses for
+  C2 partner lookup, reused by `bibAllocation.js` for per-person dedup.
 - **`download.js`** — `triggerDownload(csvText, filename)` via `Blob` +
   temporary `<a>` click.
 - **`clipboardFormat.js`** — `formatClipboardRows(rows)` → tab-delimited,
   `\r\n`-joined text per FR15: a Canoe123-labeled header row, then per row
-  the 10-column positional layout, with a C2 partner's name emitted as a
-  separate following row. `sanitizeField` strips stray tab/CR/LF from a
+  the 10-column positional layout (with `row.bib`, if set by FR19, written
+  into the Bib column), with a C2 partner's name emitted as a separate
+  following row, unbibbed. `sanitizeField` strips stray tab/CR/LF from a
   value (the paste format has no quoting mechanism to protect against
   those splitting a row into the wrong columns).
 - **`clipboard.js`** — `copyToClipboard(text)`: `navigator.clipboard.writeText`
   where available, else a temporary off-screen `<textarea>` +
   `document.execCommand("copy")` fallback for non-secure/older contexts.
-- **`app.js`** — file-input + race-year radio listeners → read the JustGo
-  file → `justgo.parseJustGoCsv` → build `{classes: CANONICAL_CLASSES,
-  competitionYear}` (from the selected radio) → `transform.generateImportRows`
-  → render an errors panel (blocks/hides the download and copy buttons when
-  non-empty), a warnings panel (never blocks), and a preview table; download
-  button calls `csv.serializeCsv` + `download.triggerDownload`, copy button
-  calls `clipboardFormat.formatClipboardRows` + `clipboard.copyToClipboard`
-  and shows transient "Copied!"/"Copy failed" feedback. A thrown parse error
-  is caught and shown as a single fatal message.
+- **`nameCase.js`** — FR17. `toUpperFamilyCase(value)`/`toTitleGivenCase(value)`:
+  simple case transforms (see FR17 for the exact algorithm and its known
+  gaps). `normalizeRowNames(row)` applies both to
+  `familyName`/`givenName`/`familyName2`/`givenName2` on a copy of the row.
+- **`forerunners.js`** — FR18. `buildForerunnerRows()` returns the two
+  fixed `OutputRow`-shaped Forerunner entries (`classId: "FR"`,
+  `categoryAge: null`) in order.
+- **`bibAllocation.js`** — FR19. `allocateBibs(rows)` groups rows by
+  `classId` (`"FR"` exactly, else starting `"W"`, else starting `"M"`; any
+  other `classId` is passed through unbibbed at the end — not expected to
+  occur, but not silently dropped either), sorts Women/Men groups
+  youngest-first then by name, assigns sequential bib numbers per unique
+  person (via `transform.normalizeName`) with the multiple-of-5 rounding
+  between groups, and **returns a new array in the reordered
+  Forerunners→Women→Men sequence** (not the original row order) since bib
+  numbers only make sense presented in that order.
+- **`app.js`** — file-input + race-year radio + option-checkbox listeners →
+  read the JustGo file → `justgo.parseJustGoCsv` → build `{classes:
+  CANONICAL_CLASSES, competitionYear}` (from the selected radio) →
+  `transform.generateImportRows` → render an errors panel (blocks/hides the
+  download and copy buttons when non-empty) and a warnings panel (never
+  blocks). On success, applies whichever of FR17-19 are checked — Forerunner
+  rows prepended, then bib allocation (which also reorders), then name
+  casing last — to a working copy of `rows`, then renders the preview table
+  and builds both outputs from that same processed set: download button
+  calls `csv.serializeCsv` + `download.triggerDownload`, copy button calls
+  `clipboardFormat.formatClipboardRows` + `clipboard.copyToClipboard` and
+  shows transient "Copied!"/"Copy failed" feedback. The CSV header and the
+  preview table both grow a trailing "Bib" column only when FR19 is
+  checked. A thrown parse error is caught and shown as a single fatal
+  message.
 
 ## 4. Key design decisions
 
@@ -370,10 +408,23 @@ a real gap, not yet reconciled: the user has flagged they likely still need
 logic (or the canonical class table) is changed. Do not silently change
 this behavior.
 
+### 4.4 Open question — C2 crew bib allocation
+
+FR19's Bib column and a C2 crew row don't fully reconcile yet. A C2 crew is
+written as one combined row (`familyName`/`givenName` for the primary
+paddler, `familyName2`/`givenName2` for the partner) — `bibAllocation.js`
+assigns that row's `bib` from the primary paddler's normalized name only,
+so the row's Bib reflects the primary paddler; the partner doesn't get a
+bib of their own on that row, and if they also race solo elsewhere and get
+a bib there, the two aren't reconciled. This is low-stakes today since
+same-gender C2 crews can't currently generate successfully at all
+([§4.3](#43-known-open-issue--same-gender-c2-crews)) — revisit once that's
+resolved.
+
 ## 5. Testing strategy
 
 `node --test test/*.test.js` (`npm test`), Node's built-in test runner, no
-external devDependencies. 32/32 passing as of this writing.
+external devDependencies. 45/45 passing as of this writing.
 
 | File | Covers |
 |---|---|
@@ -383,12 +434,15 @@ external devDependencies. 32/32 passing as of this writing.
 | `canonicalClasses.test.js` | shape of the built-in table (14 classes; the 4 with 10 categories each; the 10 with none) |
 | `transform.test.js` | full end-to-end against the real example CSV (6 rows, zero errors/warnings), output row shape, unrecognized-class error, out-of-range-age error, no-categories class producing a blank category (not an error), unmapped-country warning |
 | `transform.c2.test.js` | hand-crafted fixtures (the real example file has no C2 usage): valid pair, partner's other solo class still emitted separately, blank/not-found/ambiguous partner name, gender mismatch, missing crew `ClassId` |
+| `nameCase.test.js` | `toUpperFamilyCase`/`toTitleGivenCase` on plain and hyphenated/multi-word values, `normalizeRowNames` touching only the four name fields |
+| `forerunners.test.js` | `buildForerunnerRows` shape and order (2 rows, `classId: "FR"`, blank Given Name/Category, `categoryAge: null`) |
+| `bibAllocation.test.js` | forerunner ordering, sorting youngest-first then by name, one shared bib per person across multiple rows, the multiple-of-5 rounding (including off an exact multiple), an empty group not breaking the rounding, no-forerunners/no-women edge cases, and that the returned array is reordered into bib order rather than preserving upload order |
 
-`clipboardFormat.js` (FR15) has no automated unit test yet — it's currently
-verified manually only (see [§5.1](#51-manual-end-to-end-verification),
+`clipboardFormat.js` (FR15) still has no automated unit test — it's
+currently verified manually only (see [§5.1](#51-manual-end-to-end-verification),
 step 4a). A follow-up test file (`clipboardFormat.test.js`) covering the
-label row, 10-column layout, and the C2 partner-on-next-row case would close
-that gap.
+label row, 10-column layout, the C2 partner-on-next-row case, and the Bib
+column populated by FR19 would close that gap.
 
 Representative fixtures use real people from the example JustGo export by
 first name only where useful for readability; no PII beyond what's already
@@ -420,6 +474,14 @@ code.
    matching partner names/gender, and confirm the app reports the known
    "not a recognized class" error for `MC2`/`WC2` per [§4.3](#43-known-open-issue--same-gender-c2-crews)
    rather than crashing.
+6a. Check all three "Optional output" boxes (FR17-19) with the example CSV
+    loaded. Confirm: the preview and both outputs gain a trailing Bib
+    column; two `FORE RUNNER 1`/`FORE RUNNER 2` rows (class `FR`, bib 1/2)
+    appear first; every name is upper/title-cased; rows are grouped Women
+    then Men rather than in upload order, sorted youngest-first within each
+    group; and the first Men bib rounds up to the next multiple of 5 past
+    the last Women bib (never landing exactly on the boundary). Uncheck
+    each independently and confirm the output reverts correctly.
 7. `npm test` passes.
 
 ## 6. Related documents
@@ -437,40 +499,3 @@ code.
   (`CheckAndTransformClipboardContent`/`TransformClipboard`/
   `ProcessImportData`) and aren't re-derivable from this repo alone; FR15
   above is the durable record of those findings inside this project.
-
-## 7. Planned enhancements — checkbox-controlled optional outputs
-
-Implementation sketch for FR17–FR19, none of it built yet. Recorded so a
-future implementation pass starts from an agreed shape rather than
-rediscovering these decisions.
-
-- **UI.** Three checkboxes in a new `<fieldset>` alongside the existing
-  race-year control (unchecked by default), each wired with a `change`
-  listener that re-runs generation exactly like the year radios do today.
-- **`nameCase.js`** *(new, pure)* — FR17. A function that upper-cases a
-  family name and title-cases a given name per the simple algorithm in
-  FR17. Applied as a row-mapping step, not baked into `transform.js`, so
-  it stays optional and composable with the other two features.
-- **`forerunners.js`** *(new, pure)* — FR18. Exports the two fixed
-  `OutputRow`-shaped Forerunner entries (or a function building them) to
-  prepend to `rows` ahead of everything else when checked.
-- **`bibAllocation.js`** *(new, pure)* — FR19. Takes the (possibly
-  Forerunner-prepended) `rows` and returns them with a `bib` field added,
-  implementing the three-group/rounding/dedup logic above. Needs each
-  row's category-calculation age to sort correctly even for
-  no-category classes — cheapest way is for `transform.js` to start
-  stamping the age it already computes internally onto each `OutputRow`
-  (e.g. a `categoryAge` field) rather than recomputing it from `birthdate`
-  a second time.
-- **Output shape changes.** `OUTPUT_HEADER`/`rowToCsvArray` (`transform.js`)
-  and the clipboard header/column list (`clipboardFormat.js`) both need a
-  conditional Bib column — present only when FR19 is checked — rather than
-  clipboard's current always-blank placeholder. `app.js` composes these
-  optional steps (name-casing, Forerunner rows, bib allocation) in sequence
-  before handing rows to `csv.serializeCsv` / `clipboardFormat.formatClipboardRows`,
-  based on which checkboxes are checked.
-- **Testing.** Each new pure module should get its own `test/*.test.js`
-  file following the existing pattern (`categories.test.js`,
-  `clipboardFormat.js` itself is still untested too — see [§5](#5-testing-strategy)),
-  particularly the FR19 rounding edge cases (empty group, exact-multiple-of-5
-  boundary) called out above.

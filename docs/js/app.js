@@ -5,9 +5,15 @@ import { serializeCsv } from "./csv.js";
 import { triggerDownload } from "./download.js";
 import { copyToClipboard } from "./clipboard.js";
 import { formatClipboardRows } from "./clipboardFormat.js";
+import { normalizeRowNames } from "./nameCase.js";
+import { buildForerunnerRows } from "./forerunners.js";
+import { allocateBibs } from "./bibAllocation.js";
 
 const justgoInput = document.getElementById("justgo-file");
 const yearInputs = document.querySelectorAll('input[name="race-year"]');
+const normalizeNamesInput = document.getElementById("normalize-names");
+const forerunnerInput = document.getElementById("forerunner");
+const allocateBibsInput = document.getElementById("allocate-bibs");
 const fatalEl = document.getElementById("fatal");
 const errorsEl = document.getElementById("errors");
 const errorsListEl = document.getElementById("errors-list");
@@ -34,6 +40,9 @@ justgoInput.addEventListener("change", run);
 for (const input of yearInputs) {
   input.addEventListener("change", run);
 }
+normalizeNamesInput.addEventListener("change", run);
+forerunnerInput.addEventListener("change", run);
+allocateBibsInput.addEventListener("change", run);
 downloadBtn.addEventListener("click", () => {
   triggerDownload(latestCsvText, "siwi-import.csv");
 });
@@ -83,9 +92,9 @@ async function run() {
 
   renderIssues(errorsEl, errorsListEl, errors);
   renderIssues(warningsEl, warningsListEl, warnings);
-  renderPreview(rows);
 
   if (errors.length > 0) {
+    renderPreview(rows, false);
     statusEl.textContent = `${errors.length} error${errors.length === 1 ? "" : "s"} found — fix these in your JustGo CSV and re-upload.`;
     downloadBtn.disabled = true;
     copyBtn.disabled = true;
@@ -94,11 +103,30 @@ async function run() {
     return;
   }
 
-  latestCsvText = serializeCsv([OUTPUT_HEADER, ...rows.map(rowToCsvArray)]);
-  latestClipboardText = formatClipboardRows(rows);
-  downloadBtn.disabled = rows.length === 0;
-  copyBtn.disabled = rows.length === 0;
-  statusEl.textContent = `${rows.length} row${rows.length === 1 ? "" : "s"} ready to download.`;
+  // Optional output features (FR17-19): Forerunner rows first (so bib
+  // allocation sees them), then bib numbers, then name-casing last so it
+  // doesn't affect sorting/grouping upstream of it.
+  let outputRows = rows;
+  if (forerunnerInput.checked) {
+    outputRows = [...buildForerunnerRows(), ...outputRows];
+  }
+  if (allocateBibsInput.checked) {
+    outputRows = allocateBibs(outputRows);
+  }
+  if (normalizeNamesInput.checked) {
+    outputRows = outputRows.map(normalizeRowNames);
+  }
+
+  const bibEnabled = allocateBibsInput.checked;
+  renderPreview(outputRows, bibEnabled);
+
+  const header = bibEnabled ? [...OUTPUT_HEADER, "Bib"] : OUTPUT_HEADER;
+  const toCsvRow = bibEnabled ? (row) => [...rowToCsvArray(row), String(row.bib ?? "")] : rowToCsvArray;
+  latestCsvText = serializeCsv([header, ...outputRows.map(toCsvRow)]);
+  latestClipboardText = formatClipboardRows(outputRows);
+  downloadBtn.disabled = outputRows.length === 0;
+  copyBtn.disabled = outputRows.length === 0;
+  statusEl.textContent = `${outputRows.length} row${outputRows.length === 1 ? "" : "s"} ready to download.`;
 }
 
 function clear() {
@@ -140,13 +168,15 @@ function renderIssues(panel, listContainer, issues) {
   listContainer.appendChild(list);
 }
 
-function renderPreview(rows) {
+function renderPreview(rows, bibEnabled) {
   if (rows.length === 0) return;
   const table = document.createElement("table");
+  const header = bibEnabled ? [...OUTPUT_HEADER, "Bib"] : OUTPUT_HEADER;
+  const toCsvRow = bibEnabled ? (row) => [...rowToCsvArray(row), String(row.bib ?? "")] : rowToCsvArray;
 
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
-  for (const label of OUTPUT_HEADER) {
+  for (const label of header) {
     const th = document.createElement("th");
     th.textContent = label;
     headRow.appendChild(th);
@@ -157,7 +187,7 @@ function renderPreview(rows) {
   const tbody = document.createElement("tbody");
   for (const row of rows) {
     const tr = document.createElement("tr");
-    for (const value of rowToCsvArray(row)) {
+    for (const value of toCsvRow(row)) {
       const td = document.createElement("td");
       td.textContent = value;
       tr.appendChild(td);

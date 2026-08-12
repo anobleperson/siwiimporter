@@ -42,6 +42,9 @@ export const OUTPUT_HEADER = [
  * @property {string} club
  * @property {string} classId
  * @property {string} category
+ * @property {number|null} categoryAge - age used for the category calculation
+ *   (or would have been, for a no-category class); null only if no race year
+ *   was available. Used by bibAllocation.js to sort youngest-first.
  */
 
 /**
@@ -102,7 +105,7 @@ export function genderLetter(gender) {
   return null;
 }
 
-function normalizeName(first, last) {
+export function normalizeName(first, last) {
   return `${first} ${last}`.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
@@ -138,17 +141,21 @@ function processSolo(record, classToken, ctx) {
     return;
   }
 
+  // Computed whenever a race year is available, even for classes with no
+  // categories — bibAllocation.js (FR19) sorts youngest-first using this,
+  // not just the category id, since not every class has one.
+  const age = ctx.classesConfig.competitionYear == null ? null : ctx.classesConfig.competitionYear - dob.year;
+
   // Some classes (e.g. team/forerunner/mixed-double classes) have no
   // categories defined at all — there's nothing to compute an age bracket
   // against, so those paddlers simply get no category, not an error.
   let category = null;
   if (classDef.categories.length > 0) {
-    if (ctx.classesConfig.competitionYear == null) {
+    if (age == null) {
       ctx.errors.push(issue(record, "Race year", undefined, "No race year was selected."));
       return;
     }
 
-    const age = ctx.classesConfig.competitionYear - dob.year;
     category = findCategory(classDef, age);
     if (!category) {
       ctx.errors.push(
@@ -175,6 +182,7 @@ function processSolo(record, classToken, ctx) {
     club: stripClubCode(record.organisation),
     classId,
     category: category ? category.catId : "",
+    categoryAge: age,
   });
 }
 
@@ -256,17 +264,20 @@ function processC2(record, nameIndex, consumedC2, ctx) {
     return;
   }
 
+  // Computed whenever a race year is available, even for classes with no
+  // categories — see the matching comment in processSolo.
+  const olderBirthYear = Math.min(dobA.year, dobB.year);
+  const age = ctx.classesConfig.competitionYear == null ? null : ctx.classesConfig.competitionYear - olderBirthYear;
+
   // As with solo classes, a crew class with no categories defined (e.g.
   // Mixed C2 in the canonical set) simply has no category, not an error.
   let category = null;
   if (classDef.categories.length > 0) {
-    if (ctx.classesConfig.competitionYear == null) {
+    if (age == null) {
       ctx.errors.push(issue(record, "Race year", undefined, "No race year was selected."));
       return;
     }
 
-    const olderBirthYear = Math.min(dobA.year, dobB.year);
-    const age = ctx.classesConfig.competitionYear - olderBirthYear;
     category = findCategory(classDef, age);
     if (!category) {
       ctx.errors.push(
@@ -296,6 +307,7 @@ function processC2(record, nameIndex, consumedC2, ctx) {
     club: stripClubCode(record.organisation),
     classId: crewClassId,
     category: category ? category.catId : "",
+    categoryAge: age,
   });
 }
 

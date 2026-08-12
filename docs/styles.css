@@ -52,9 +52,11 @@ body {
   font-weight: 600;
 }
 
-.race-year {
+.race-year,
+.options {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 1.5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -62,12 +64,14 @@ body {
   margin: 1.5rem 0;
 }
 
-.race-year legend {
+.race-year legend,
+.options legend {
   font-weight: 600;
   padding: 0 0.4rem;
 }
 
-.race-year label {
+.race-year label,
+.options label {
   display: flex;
   align-items: center;
   gap: 0.4rem;

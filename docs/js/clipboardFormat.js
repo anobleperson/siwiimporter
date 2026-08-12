@@ -7,8 +7,10 @@
 // source tree for the full spec this was derived from.
 
 // FamilyName, GivenName, NOC, Birthdate, Club, Class, Category, Bib, Ranking, StartOrder.
-// Bib/Ranking/StartOrder are always blank — this app doesn't produce them —
-// but the columns are kept so positional mapping stays consistent.
+// Ranking/StartOrder are always blank — this app doesn't produce them — and
+// Bib is blank too unless the optional "Allocate Bibs" feature (FR19) set
+// row.bib. The columns are kept regardless so positional mapping stays
+// consistent whether or not that feature is on.
 const CLIPBOARD_COLUMN_COUNT = 10;
 
 // Matches the column labels shown in Canoe123's own Import tab dropdown
@@ -38,11 +40,22 @@ export function formatClipboardRows(rows) {
   const lines = [clipboardRow(CLIPBOARD_HEADER)];
   for (const row of rows) {
     lines.push(
-      clipboardRow([row.familyName, row.givenName, row.noc, row.birthdate, row.club, row.classId, row.category])
+      clipboardRow([
+        row.familyName,
+        row.givenName,
+        row.noc,
+        row.birthdate,
+        row.club,
+        row.classId,
+        row.category,
+        row.bib ?? "",
+      ])
     );
     if (row.familyName2) {
-      // C2 crew: partner's name goes on its own row, name fields only —
-      // requires "2nd C2 Name in 2nd row" enabled in Canoe123.
+      // C2 crew: partner's name goes on its own row, name fields only, no
+      // bib of their own (the crew shares the primary paddler's bib above —
+      // see the open question on this in FR19) — requires "2nd C2 Name in
+      // 2nd row" enabled in Canoe123.
       lines.push(clipboardRow([row.familyName2, row.givenName2]));
     }
   }
