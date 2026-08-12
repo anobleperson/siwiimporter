@@ -5,7 +5,7 @@ import path from "node:path";
 import {
   parseJustGoCsv,
   parseAustralianDate,
-  stripClubCode,
+  resolveClubField,
   assertStableHeader,
 } from "../docs/js/justgo.js";
 
@@ -25,12 +25,31 @@ test("parseAustralianDate returns null for unparseable input", () => {
   assert.equal(parseAustralianDate(""), null);
 });
 
-test("stripClubCode strips only a trailing club code", () => {
-  assert.equal(stripClubCode("Derwent Canoe Club (CL000229)"), "Derwent Canoe Club");
-  assert.equal(
-    stripClubCode("Derwent Canoe Club (CL000229),Tasmanian Sea Canoeing Club Inc. (CL000312)"),
-    "Derwent Canoe Club (CL000229),Tasmanian Sea Canoeing Club Inc."
+test("resolveClubField resolves a single club to its abbreviation", () => {
+  // Derwent Canoe Club (CL000229) clashes with Darwin Canoe Club (CL000335)
+  // — both are "DCC" — so it's disambiguated with the club number.
+  assert.deepEqual(resolveClubField("Derwent Canoe Club (CL000229)"), {
+    club: "DCC-229",
+    unknownClubIds: [],
+  });
+});
+
+test("resolveClubField resolves a multi-club value to a comma-separated list of abbreviations", () => {
+  assert.deepEqual(
+    resolveClubField("Derwent Canoe Club (CL000229),Tasmanian Sea Canoeing Club Inc. (CL000312)"),
+    { club: "DCC-229,TSCC", unknownClubIds: [] }
   );
+});
+
+test("resolveClubField falls back to the plain name and reports unknown club IDs", () => {
+  assert.deepEqual(resolveClubField("Some New Club (CL999999)"), {
+    club: "Some New Club",
+    unknownClubIds: ["CL999999"],
+  });
+});
+
+test("resolveClubField leaves a value with no club code untouched", () => {
+  assert.deepEqual(resolveClubField("Some Club"), { club: "Some Club", unknownClubIds: [] });
 });
 
 test("assertStableHeader throws on an unexpected layout", () => {

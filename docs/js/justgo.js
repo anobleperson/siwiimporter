@@ -9,6 +9,7 @@
 // change going undetected.
 
 import { parseCsv } from "./csv.js";
+import { CLUB_ABBREVIATIONS } from "./clubs.js";
 
 export const JUSTGO_COLUMNS = {
   firstName: 0,
@@ -120,11 +121,34 @@ export function parseAustralianDate(d) {
 }
 
 /**
- * Strips a trailing " (CLxxxxx)" club-code suffix only. Must not touch
- * codes that appear mid-string (e.g. multi-club "A (CL1),B (CL2)" values).
+ * Resolves a JustGo `Organisation` value — one or more comma-separated
+ * "Name (CLxxxxx)" club memberships — into a comma-separated list of club
+ * abbreviations (FR20). A segment whose club ID isn't in the abbreviation
+ * directory falls back to its plain name with the code stripped, and is
+ * reported in `unknownClubIds` so the caller can raise a warning.
  * @param {string} org
- * @returns {string}
+ * @returns {{club: string, unknownClubIds: string[]}}
  */
-export function stripClubCode(org) {
-  return (org ?? "").replace(/\s*\(CL\d+\)\s*$/, "").trim();
+export function resolveClubField(org) {
+  const segments = (org ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const unknownClubIds = [];
+
+  const club = segments
+    .map((segment) => {
+      const match = /^(.*?)\s*\(CL(\d+)\)$/.exec(segment);
+      if (!match) return segment;
+
+      const clubId = `CL${match[2]}`;
+      const abbreviation = CLUB_ABBREVIATIONS.get(clubId);
+      if (abbreviation) return abbreviation;
+
+      unknownClubIds.push(clubId);
+      return match[1];
+    })
+    .join(",");
+
+  return { club, unknownClubIds };
 }

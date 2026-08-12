@@ -1,6 +1,6 @@
 # SIWI Importer — Specification
 
-Status: reflects the code in the repo as of 2026-08-12 (45/45 tests
+Status: reflects the code in the repo as of 2026-08-12 (48/48 tests
 passing). `clipboardFormat.js` (FR15) is still verified manually only —
 see [§5](#5-testing-strategy).
 
@@ -65,9 +65,19 @@ conventions documented in [`siwi-import-format.md`](siwi-import-format.md)).
   built-in table to produce a 3-letter NOC/IOC code. A miss is a
   **non-blocking warning** (Ctry cell left blank) — NOC isn't a required
   Canoe123 import field.
-- **FR10 — Club.** JustGo's `Organisation` column with a trailing `"
-  (CLxxxxx)"` club-code suffix stripped, anchored to end-of-string only (a
-  mid-string club code inside a multi-club value must be preserved).
+- **FR10 — Club.** JustGo's `Organisation` column — one or more
+  comma-separated `"Name (CLxxxxx)"` club memberships — is converted to a
+  comma-separated list of club **abbreviations**, one per membership, via
+  the built-in `CLUB_ABBREVIATIONS` directory in `clubs.js`
+  (`resolveClubField` in `justgo.js`). When an abbreviation is shared by more
+  than one club anywhere in the directory, every club sharing it is
+  disambiguated with a `-<club number>` suffix (the numeric part of its Club
+  ID, e.g. `CL000229` → `229`) — see
+  [`club-abbreviations.md`](club-abbreviations.md) for the full directory and
+  worked examples. A club ID not found in the directory is a **non-blocking
+  warning**; that membership falls back to its plain name with the code
+  stripped, rather than blocking generation. A membership with no `(CLxxxxx)`
+  code at all is passed through unchanged.
 - **FR11 — Birthdate output.** ISO `YYYY-MM-DD` format, to avoid
   locale-ambiguous `DateTime.TryParse` behavior on the Canoe123 side.
 - **FR12 — Output shape (CSV download).** Header row: `Family Name, G.Name,
@@ -214,6 +224,7 @@ docs/
   js/
     csv.js               generic CSV parse/serialize, pure
     justgo.js             JustGo column adapter, pure
+    clubs.js               FR10: club ID -> abbreviation directory, pure
     categories.js         findCategory(classDef, age), pure — no XML/DOM
     canonicalClasses.js   built-in CANONICAL_CLASSES class/category data
     noc.js                country-name -> IOC/NOC code table, pure
@@ -229,6 +240,7 @@ documentation/            reference docs, not deployed by GitHub Pages
   specification.md         this document
   siwi-import-format.md     Canoe123 Import-tab column reference
   classes-and-categories.md human-readable canonical class/category list
+  club-abbreviations.md     human-readable mirror of clubs.js's directory
 test/                      dev-only, not deployed
   csv.test.js
   justgo.test.js
@@ -254,7 +266,7 @@ justgo.parseJustGoCsv()  ──uses──▶ csv.parseCsv()
       │  JustGoRecord[]
       ▼
 transform.generateImportRows(records, {classes: CANONICAL_CLASSES, competitionYear})
-      │  uses categories.findCategory(), noc.countryNameToNoc(), justgo.parseAustralianDate()/stripClubCode()
+      │  uses categories.findCategory(), noc.countryNameToNoc(), justgo.parseAustralianDate()/resolveClubField() (which reads clubs.CLUB_ABBREVIATIONS)
       ▼
 { rows, errors, warnings }
       │
@@ -288,8 +300,16 @@ which is what makes them unit-testable under Node.
   early columns (FirstName/LastName/DOB/Gender/Country) by name and throws a
   clear error if JustGo's layout ever shifts. `parseJustGoCsv(text)` →
   `JustGoRecord[]`. `parseAustralianDate(d)` parses `D/M/YYYY`, returning
-  `null` (not throwing) on bad input. `stripClubCode(org)` strips a trailing
-  `" (CLxxxxx)"` only.
+  `null` (not throwing) on bad input. `resolveClubField(org)` (FR10) splits a
+  comma-separated `"Name (CLxxxxx)"` list, maps each club ID through
+  `clubs.CLUB_ABBREVIATIONS`, and returns `{club, unknownClubIds}` — the
+  latter surfaced by `transform.js` as non-blocking warnings.
+- **`clubs.js`** — `CLUB_DIRECTORY`: hand-maintained `[clubId, abbreviation]`
+  pairs (kept in sync with [`club-abbreviations.md`](club-abbreviations.md)).
+  `CLUB_ABBREVIATIONS: Map<clubId, string>` is derived from it at module
+  load: any abbreviation shared by more than one club in the directory is
+  suffixed with `-<club number>` for every club sharing it, so collisions
+  never need a hand-picked tiebreaker.
 - **`categories.js`** — `findCategory(classDef, age)` linear-scans a class's
   `categories: [{catId, firstYear, lastYear}]` for `firstYear <= age <=
   lastYear`, returning `null` on no match. Pure, no XML/DOM dependency —

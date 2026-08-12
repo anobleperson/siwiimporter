@@ -48,10 +48,7 @@ test("end-to-end against the real example JustGo CSV: 6 rows, no errors, no warn
     ["MC1U16", "MK1U16"]
   );
 
-  assert.equal(
-    byName("Person6FirstName", "Person6FamilyName")[0].club,
-    "Derwent Canoe Club (CL000229),Tasmanian Sea Canoeing Club Inc."
-  );
+  assert.equal(byName("Person6FirstName", "Person6FamilyName")[0].club, "DCC-229,TSCC");
 
   // Non-paddlers / blank-classes rows never appear.
   const names = rows.map((r) => `${r.givenName}|${r.familyName}`);

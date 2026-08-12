@@ -7,7 +7,7 @@
 // "raise an error, don't create the file, explain what field and the
 // issue was" requirement.
 
-import { parseAustralianDate, stripClubCode } from "./justgo.js";
+import { parseAustralianDate, resolveClubField } from "./justgo.js";
 import { findCategory } from "./categories.js";
 import { countryNameToNoc } from "./noc.js";
 
@@ -179,7 +179,7 @@ function processSolo(record, classToken, ctx) {
     givenName2: "",
     noc: noc ?? "",
     birthdate: formatIsoDate(dob),
-    club: stripClubCode(record.organisation),
+    club: resolveClub(record, ctx),
     classId,
     category: category ? category.catId : "",
     categoryAge: age,
@@ -304,11 +304,27 @@ function processC2(record, nameIndex, consumedC2, ctx) {
     givenName2: partner.firstName,
     noc: noc ?? "",
     birthdate: formatIsoDate(dobA),
-    club: stripClubCode(record.organisation),
+    club: resolveClub(record, ctx),
     classId: crewClassId,
     category: category ? category.catId : "",
     categoryAge: age,
   });
+}
+
+function resolveClub(record, ctx) {
+  const { club, unknownClubIds } = resolveClubField(record.organisation);
+  for (const clubId of unknownClubIds) {
+    ctx.warnings.push(
+      issue(
+        record,
+        "Club",
+        clubId,
+        `Club ID "${clubId}" is not in the club abbreviation directory; using the club name instead.`,
+        "warning"
+      )
+    );
+  }
+  return club;
 }
 
 function formatIsoDate({ year, month, day }) {
