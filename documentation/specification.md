@@ -2,6 +2,8 @@
 
 Status: reflects the code in the repo as of 2026-08-12 (32/32 tests
 passing; the clipboard-copy feature, FR15, is verified manually only).
+FR17–FR19 (§2.1) are **planned, not yet implemented** — see [§7](#7-planned-enhancements--checkbox-controlled-optional-outputs)
+for the implementation sketch.
 
 ## 1. Purpose
 
@@ -111,6 +113,75 @@ conventions documented in [`siwi-import-format.md`](siwi-import-format.md)).
   file, `assertStableHeader` failure because JustGo's export layout
   changed) is caught and shown as a single fatal message, distinct from
   per-row issues.
+
+The following three are **optional, checkbox-controlled outputs — planned,
+not yet implemented.** Each defaults to off/unchecked, and when unchecked
+leaves today's generated output byte-for-byte unchanged. They're
+independent of each other and may be combined in any combination.
+
+- **FR17 — Normalize Names *(planned)*.** When checked, every row's Family
+  Name is upper-cased and Given Name is put in simple title case (the
+  character after the start of the string or after each space/hyphen is
+  capitalized, everything else lowercased — this doesn't special-case
+  apostrophes like `O'Brien` or embedded capitals like `McDonald`; expect to
+  revisit the algorithm once checked against real names). Applies to
+  `familyName`/`givenName`/`familyName2`/`givenName2` on every row,
+  including the synthetic Forerunner rows from FR18 if both are enabled
+  together (their Family Name would become e.g. `FORE RUNNER 1`).
+- **FR18 — Forerunner *(planned)*.** When checked, exactly two synthetic
+  rows are added ahead of every JustGo-derived row: Family Name `Fore
+  Runner 1` / `Fore Runner 2`, Given Name blank, Class `FR` (the existing
+  ungendered canonical class with zero categories — see
+  `canonicalClasses.js`), every other field (NOC, Birthdate, Club, Category,
+  2nd Family/Given Name) blank. These two rows always exist together or not
+  at all — there's no way to add just one — and aren't validated against
+  JustGo data since they don't come from it.
+- **FR19 — Allocate Bibs *(planned)*.** When checked, every row (including
+  FR18's Forerunner rows, if also enabled) gets a Bib number, added as a new
+  Bib column to both the CSV download (FR12) and the clipboard paste output
+  (FR15) — the column only appears when this box is checked.
+
+  Allocation runs in three fixed groups, in this order:
+  1. **Forerunners** (if FR18 is enabled) — bib 1, then 2, in the order
+     they're defined (`Fore Runner 1`, `Fore Runner 2`). If FR18 is off,
+     this group simply doesn't exist.
+  2. **Women** — every row whose `ClassId` starts with `W`.
+  3. **Men** — every row whose `ClassId` starts with `M`.
+
+  Within the Women and Men groups, rows are sorted youngest-first by the
+  age already used for that row's category calculation (`competitionYear −
+  birthYear`; for a C2 crew row, this is the older partner's age per FR8),
+  then alphabetically by Family Name, then Given Name, to break ties. This
+  sorts correctly even for classes with no defined category (FR6), since
+  age is computed from birthdate directly rather than parsed from the
+  category id.
+
+  Bib numbers are assigned sequentially starting at 1, one bib per unique
+  person (matched via the same normalized-name key FR8 already uses for C2
+  partner lookup) — a person who appears in multiple rows (e.g. entered two
+  classes) gets a single bib number written on every row for them, not a
+  separate number per row.
+
+  Before starting the Women group and before starting the Men group, the
+  bib counter is rounded up to the lowest multiple of 5 that's *strictly
+  greater* than the highest bib assigned so far (never reused, even when
+  the highest bib already happens to be an exact multiple of 5): last bib 7
+  → next group starts at 10; last bib 12 → starts at 15; last bib exactly
+  10 → next group starts at 15, not 10. If a group turns out empty (e.g.
+  Allocate Bibs is on but Forerunner is off, or there are zero women in the
+  file), the following group's start is computed from whatever the highest
+  bib assigned so far actually is — there's no separate "skip an empty
+  group" case to handle, since the rounding rule already only cares about
+  the running highest bib, not which named group produced it.
+
+  **Open question, not yet confirmed:** a C2 crew is written as one
+  combined row (`familyName`/`givenName` for the primary paddler,
+  `familyName2`/`givenName2` for the partner). The current assumption is
+  that row's Bib reflects the *primary* paddler's bib only; if the partner
+  also races solo elsewhere and gets their own bib there, it isn't
+  reconciled with the crew row. This is low-stakes today since same-gender
+  C2 crews can't currently generate successfully at all (§4.3) — revisit
+  once that's resolved.
 
 ### 2.2 Non-functional requirements
 
@@ -366,3 +437,40 @@ code.
   (`CheckAndTransformClipboardContent`/`TransformClipboard`/
   `ProcessImportData`) and aren't re-derivable from this repo alone; FR15
   above is the durable record of those findings inside this project.
+
+## 7. Planned enhancements — checkbox-controlled optional outputs
+
+Implementation sketch for FR17–FR19, none of it built yet. Recorded so a
+future implementation pass starts from an agreed shape rather than
+rediscovering these decisions.
+
+- **UI.** Three checkboxes in a new `<fieldset>` alongside the existing
+  race-year control (unchecked by default), each wired with a `change`
+  listener that re-runs generation exactly like the year radios do today.
+- **`nameCase.js`** *(new, pure)* — FR17. A function that upper-cases a
+  family name and title-cases a given name per the simple algorithm in
+  FR17. Applied as a row-mapping step, not baked into `transform.js`, so
+  it stays optional and composable with the other two features.
+- **`forerunners.js`** *(new, pure)* — FR18. Exports the two fixed
+  `OutputRow`-shaped Forerunner entries (or a function building them) to
+  prepend to `rows` ahead of everything else when checked.
+- **`bibAllocation.js`** *(new, pure)* — FR19. Takes the (possibly
+  Forerunner-prepended) `rows` and returns them with a `bib` field added,
+  implementing the three-group/rounding/dedup logic above. Needs each
+  row's category-calculation age to sort correctly even for
+  no-category classes — cheapest way is for `transform.js` to start
+  stamping the age it already computes internally onto each `OutputRow`
+  (e.g. a `categoryAge` field) rather than recomputing it from `birthdate`
+  a second time.
+- **Output shape changes.** `OUTPUT_HEADER`/`rowToCsvArray` (`transform.js`)
+  and the clipboard header/column list (`clipboardFormat.js`) both need a
+  conditional Bib column — present only when FR19 is checked — rather than
+  clipboard's current always-blank placeholder. `app.js` composes these
+  optional steps (name-casing, Forerunner rows, bib allocation) in sequence
+  before handing rows to `csv.serializeCsv` / `clipboardFormat.formatClipboardRows`,
+  based on which checkboxes are checked.
+- **Testing.** Each new pure module should get its own `test/*.test.js`
+  file following the existing pattern (`categories.test.js`,
+  `clipboardFormat.js` itself is still untested too — see [§5](#5-testing-strategy)),
+  particularly the FR19 rounding edge cases (empty group, exact-multiple-of-5
+  boundary) called out above.
