@@ -135,19 +135,33 @@ const CLUB_DIRECTORY = [
   ["CL000330", "YMACC"],
 ];
 
-function buildAbbreviationMap(directory) {
+/** Club ID (e.g. "CL000229") -> the club's own, un-disambiguated abbreviation. */
+export const CLUB_BASE_ABBREVIATIONS = new Map(CLUB_DIRECTORY);
+
+/**
+ * Builds a Club ID -> output abbreviation map scoped to just the given club
+ * IDs — e.g. every club actually referenced in one event's participant
+ * list. An abbreviation is only suffixed with "-<club number>" when two or
+ * more *distinct* clubs among the given IDs share it; a same-abbreviation
+ * clash elsewhere in the full directory that nobody in this event belongs
+ * to is irrelevant and must not add noise to the output.
+ * @param {Iterable<string>} clubIds
+ * @returns {Map<string, string>}
+ */
+export function buildScopedAbbreviations(clubIds) {
+  const uniqueIds = [...new Set(clubIds)].filter((id) => CLUB_BASE_ABBREVIATIONS.has(id));
+
   const counts = new Map();
-  for (const [, abbreviation] of directory) {
+  for (const id of uniqueIds) {
+    const abbreviation = CLUB_BASE_ABBREVIATIONS.get(id);
     counts.set(abbreviation, (counts.get(abbreviation) ?? 0) + 1);
   }
 
   const map = new Map();
-  for (const [clubId, abbreviation] of directory) {
-    const clubNumber = Number(clubId.slice(2));
-    map.set(clubId, counts.get(abbreviation) > 1 ? `${abbreviation}-${clubNumber}` : abbreviation);
+  for (const id of uniqueIds) {
+    const abbreviation = CLUB_BASE_ABBREVIATIONS.get(id);
+    const clubNumber = Number(id.slice(2));
+    map.set(id, counts.get(abbreviation) > 1 ? `${abbreviation}-${clubNumber}` : abbreviation);
   }
   return map;
 }
-
-/** Club ID (e.g. "CL000229") -> final, disambiguated output abbreviation. */
-export const CLUB_ABBREVIATIONS = buildAbbreviationMap(CLUB_DIRECTORY);

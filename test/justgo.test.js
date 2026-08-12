@@ -6,6 +6,7 @@ import {
   parseJustGoCsv,
   parseAustralianDate,
   resolveClubField,
+  extractClubIds,
   assertStableHeader,
 } from "../docs/js/justgo.js";
 
@@ -25,31 +26,45 @@ test("parseAustralianDate returns null for unparseable input", () => {
   assert.equal(parseAustralianDate(""), null);
 });
 
-test("resolveClubField resolves a single club to its abbreviation", () => {
-  // Derwent Canoe Club (CL000229) clashes with Darwin Canoe Club (CL000335)
-  // — both are "DCC" — so it's disambiguated with the club number.
-  assert.deepEqual(resolveClubField("Derwent Canoe Club (CL000229)"), {
-    club: "DCC-229",
+test("resolveClubField resolves a single club using the given abbreviation map", () => {
+  const abbreviations = new Map([["CL000229", "DCC"]]);
+  assert.deepEqual(resolveClubField("Derwent Canoe Club (CL000229)", abbreviations), {
+    club: "DCC",
     unknownClubIds: [],
   });
 });
 
 test("resolveClubField resolves a multi-club value to a comma-separated list of abbreviations", () => {
+  const abbreviations = new Map([
+    ["CL000229", "DCC-229"],
+    ["CL000312", "TSCC"],
+  ]);
   assert.deepEqual(
-    resolveClubField("Derwent Canoe Club (CL000229),Tasmanian Sea Canoeing Club Inc. (CL000312)"),
+    resolveClubField("Derwent Canoe Club (CL000229),Tasmanian Sea Canoeing Club Inc. (CL000312)", abbreviations),
     { club: "DCC-229,TSCC", unknownClubIds: [] }
   );
 });
 
 test("resolveClubField falls back to the plain name and reports unknown club IDs", () => {
-  assert.deepEqual(resolveClubField("Some New Club (CL999999)"), {
+  assert.deepEqual(resolveClubField("Some New Club (CL999999)", new Map()), {
     club: "Some New Club",
     unknownClubIds: ["CL999999"],
   });
 });
 
 test("resolveClubField leaves a value with no club code untouched", () => {
-  assert.deepEqual(resolveClubField("Some Club"), { club: "Some Club", unknownClubIds: [] });
+  assert.deepEqual(resolveClubField("Some Club", new Map()), { club: "Some Club", unknownClubIds: [] });
+});
+
+test("extractClubIds pulls club IDs out of a multi-club organisation value", () => {
+  assert.deepEqual(
+    extractClubIds("Derwent Canoe Club (CL000229),Tasmanian Sea Canoeing Club Inc. (CL000312)"),
+    ["CL000229", "CL000312"]
+  );
+});
+
+test("extractClubIds returns an empty array when there's no club code", () => {
+  assert.deepEqual(extractClubIds("Some Club"), []);
 });
 
 test("assertStableHeader throws on an unexpected layout", () => {

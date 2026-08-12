@@ -9,7 +9,6 @@
 // change going undetected.
 
 import { parseCsv } from "./csv.js";
-import { CLUB_ABBREVIATIONS } from "./clubs.js";
 
 export const JUSTGO_COLUMNS = {
   firstName: 0,
@@ -121,32 +120,58 @@ export function parseAustralianDate(d) {
 }
 
 /**
- * Resolves a JustGo `Organisation` value — one or more comma-separated
- * "Name (CLxxxxx)" club memberships — into a comma-separated list of club
- * abbreviations (FR20). A segment whose club ID isn't in the abbreviation
- * directory falls back to its plain name with the code stripped, and is
- * reported in `unknownClubIds` so the caller can raise a warning.
+ * Splits a JustGo `Organisation` value into its "Name (CLxxxxx)" segments.
+ * A segment with no trailing club code gets `clubId: null`.
  * @param {string} org
- * @returns {{club: string, unknownClubIds: string[]}}
+ * @returns {{name: string, clubId: string|null}[]}
  */
-export function resolveClubField(org) {
-  const segments = (org ?? "")
+function parseOrganisationSegments(org) {
+  return (org ?? "")
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean);
-  const unknownClubIds = [];
-
-  const club = segments
+    .filter(Boolean)
     .map((segment) => {
       const match = /^(.*?)\s*\(CL(\d+)\)$/.exec(segment);
-      if (!match) return segment;
+      return match ? { name: match[1], clubId: `CL${match[2]}` } : { name: segment, clubId: null };
+    });
+}
 
-      const clubId = `CL${match[2]}`;
-      const abbreviation = CLUB_ABBREVIATIONS.get(clubId);
+/**
+ * Pulls just the club IDs (e.g. "CL000229") out of a JustGo `Organisation`
+ * value — used up front to work out which clubs a whole participant list
+ * actually references, before any abbreviation is resolved.
+ * @param {string} org
+ * @returns {string[]}
+ */
+export function extractClubIds(org) {
+  return parseOrganisationSegments(org)
+    .map((s) => s.clubId)
+    .filter(Boolean);
+}
+
+/**
+ * Resolves a JustGo `Organisation` value — one or more comma-separated
+ * "Name (CLxxxxx)" club memberships — into a comma-separated list of club
+ * abbreviations (FR10), using the given Club ID -> abbreviation map. A
+ * segment whose club ID isn't in that map falls back to its plain name with
+ * the code stripped, and is reported in `unknownClubIds` so the caller can
+ * raise a warning.
+ * @param {string} org
+ * @param {Map<string, string>} abbreviations
+ * @returns {{club: string, unknownClubIds: string[]}}
+ */
+export function resolveClubField(org, abbreviations) {
+  const unknownClubIds = [];
+
+  const club = parseOrganisationSegments(org)
+    .map(({ name, clubId }) => {
+      if (!clubId) return name;
+
+      const abbreviation = abbreviations.get(clubId);
       if (abbreviation) return abbreviation;
 
       unknownClubIds.push(clubId);
-      return match[1];
+      return name;
     })
     .join(",");
 

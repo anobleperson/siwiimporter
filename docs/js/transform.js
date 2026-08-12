@@ -7,7 +7,8 @@
 // "raise an error, don't create the file, explain what field and the
 // issue was" requirement.
 
-import { parseAustralianDate, resolveClubField } from "./justgo.js";
+import { parseAustralianDate, resolveClubField, extractClubIds } from "./justgo.js";
+import { buildScopedAbbreviations } from "./clubs.js";
 import { findCategory } from "./categories.js";
 import { countryNameToNoc } from "./noc.js";
 
@@ -58,7 +59,17 @@ export function generateImportRows(records, classesConfig) {
   const warnings = [];
   const nameIndex = buildNameIndex(records);
   const consumedC2 = new Set();
-  const ctx = { classesConfig, rows, errors, warnings };
+
+  // Disambiguation (FR10) is scoped to this event's actual participants —
+  // records with no class tokens never produce a Club output cell, so their
+  // club memberships mustn't influence whether another club's abbreviation
+  // gets a "-<club number>" suffix.
+  const competingClubIds = records
+    .filter((record) => record.classTokens.length > 0)
+    .flatMap((record) => extractClubIds(record.organisation));
+  const clubAbbreviations = buildScopedAbbreviations(competingClubIds);
+
+  const ctx = { classesConfig, rows, errors, warnings, clubAbbreviations };
 
   for (const record of records) {
     if (record.classTokens.length === 0) continue; // not competing, silent skip
@@ -312,7 +323,7 @@ function processC2(record, nameIndex, consumedC2, ctx) {
 }
 
 function resolveClub(record, ctx) {
-  const { club, unknownClubIds } = resolveClubField(record.organisation);
+  const { club, unknownClubIds } = resolveClubField(record.organisation, ctx.clubAbbreviations);
   for (const clubId of unknownClubIds) {
     ctx.warnings.push(
       issue(

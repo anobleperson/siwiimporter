@@ -48,7 +48,9 @@ test("end-to-end against the real example JustGo CSV: 6 rows, no errors, no warn
     ["MC1U16", "MK1U16"]
   );
 
-  assert.equal(byName("Person6FirstName", "Person6FamilyName")[0].club, "DCC-229,TSCC");
+  // Darwin Canoe Club (also "DCC") never appears in this fixture, so no
+  // disambiguating suffix is needed for Derwent Canoe Club here.
+  assert.equal(byName("Person6FirstName", "Person6FamilyName")[0].club, "DCC,TSCC");
 
   // Non-paddlers / blank-classes rows never appear.
   const names = rows.map((r) => `${r.givenName}|${r.familyName}`);
@@ -161,4 +163,64 @@ test("an unrecognized country produces a non-blocking warning and a row is still
   assert.equal(rows[0].noc, "");
   assert.equal(warnings.length, 1);
   assert.equal(warnings[0].severity, "warning");
+});
+
+function paddlerRecord({ firstName, lastName, organisation, sourceRowIndex }) {
+  return {
+    firstName,
+    lastName,
+    dob: "1/1/2000",
+    gender: "Male",
+    country: "Australia",
+    organisation,
+    classTokens: ["K1"],
+    c2PartnerName: "",
+    sourceRowIndex,
+  };
+}
+
+test("club abbreviation clash is only disambiguated when both clubs are actually in this event's roster", () => {
+  const records = [
+    // Fairfield Canoe Club (CL000234) and Fitzroy Canoe Club (CL000236)
+    // both abbreviate to "FCC" in the directory — both are entered here, so
+    // both must be disambiguated.
+    paddlerRecord({ firstName: "A", lastName: "One", organisation: "Fairfield Canoe Club (CL000234)", sourceRowIndex: 1 }),
+    paddlerRecord({ firstName: "B", lastName: "Two", organisation: "Fitzroy Canoe Club (CL000236)", sourceRowIndex: 2 }),
+  ];
+  const classesConfig = { classes: CANONICAL_CLASSES, competitionYear: 2025 };
+
+  const { rows, errors } = generateImportRows(records, classesConfig);
+  assert.deepEqual(errors, []);
+  assert.equal(rows.find((r) => r.givenName === "A").club, "FCC-234");
+  assert.equal(rows.find((r) => r.givenName === "B").club, "FCC-236");
+});
+
+test("club abbreviation clash elsewhere in the directory is irrelevant when only one side is entered", () => {
+  const records = [
+    // Fairfield Canoe Club (CL000234) is entered alone; Fitzroy and
+    // Footscray (the other two "FCC" clubs) aren't in this roster at all,
+    // so no disambiguating suffix should be added.
+    paddlerRecord({ firstName: "A", lastName: "One", organisation: "Fairfield Canoe Club (CL000234)", sourceRowIndex: 1 }),
+  ];
+  const classesConfig = { classes: CANONICAL_CLASSES, competitionYear: 2025 };
+
+  const { rows, errors } = generateImportRows(records, classesConfig);
+  assert.deepEqual(errors, []);
+  assert.equal(rows[0].club, "FCC");
+});
+
+test("a non-competing record's club membership doesn't influence disambiguation", () => {
+  const records = [
+    paddlerRecord({ firstName: "A", lastName: "One", organisation: "Fairfield Canoe Club (CL000234)", sourceRowIndex: 1 }),
+    {
+      ...paddlerRecord({ firstName: "B", lastName: "Two", organisation: "Fitzroy Canoe Club (CL000236)", sourceRowIndex: 2 }),
+      classTokens: [], // not competing — silently skipped, per FR4
+    },
+  ];
+  const classesConfig = { classes: CANONICAL_CLASSES, competitionYear: 2025 };
+
+  const { rows, errors } = generateImportRows(records, classesConfig);
+  assert.deepEqual(errors, []);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].club, "FCC");
 });

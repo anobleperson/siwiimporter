@@ -1,6 +1,6 @@
 # SIWI Importer — Specification
 
-Status: reflects the code in the repo as of 2026-08-12 (48/48 tests
+Status: reflects the code in the repo as of 2026-08-12 (58/58 tests
 passing). `clipboardFormat.js` (FR15) is still verified manually only —
 see [§5](#5-testing-strategy).
 
@@ -68,11 +68,15 @@ conventions documented in [`siwi-import-format.md`](siwi-import-format.md)).
 - **FR10 — Club.** JustGo's `Organisation` column — one or more
   comma-separated `"Name (CLxxxxx)"` club memberships — is converted to a
   comma-separated list of club **abbreviations**, one per membership, via
-  the built-in `CLUB_ABBREVIATIONS` directory in `clubs.js`
-  (`resolveClubField` in `justgo.js`). When an abbreviation is shared by more
-  than one club anywhere in the directory, every club sharing it is
-  disambiguated with a `-<club number>` suffix (the numeric part of its Club
-  ID, e.g. `CL000229` → `229`) — see
+  the built-in club directory in `clubs.js` (`resolveClubField` in
+  `justgo.js`). When an abbreviation is shared by more than one club, every
+  club sharing it is disambiguated with a `-<club number>` suffix (the
+  numeric part of its Club ID, e.g. `CL000229` → `229`) — but **only when
+  both clashing clubs actually appear among this event's competing entrants**
+  (`generateImportRows` computes this scope up front via
+  `extractClubIds`/`buildScopedAbbreviations`, over every record with at
+  least one class token — see FR4). A clash elsewhere in the full directory
+  that nobody in this event belongs to must not add a suffix; see
   [`club-abbreviations.md`](club-abbreviations.md) for the full directory and
   worked examples. A club ID not found in the directory is a **non-blocking
   warning**; that membership falls back to its plain name with the code
@@ -244,6 +248,7 @@ documentation/            reference docs, not deployed by GitHub Pages
 test/                      dev-only, not deployed
   csv.test.js
   justgo.test.js
+  clubs.test.js
   categories.test.js
   canonicalClasses.test.js
   noc.test.js
@@ -266,7 +271,7 @@ justgo.parseJustGoCsv()  ──uses──▶ csv.parseCsv()
       │  JustGoRecord[]
       ▼
 transform.generateImportRows(records, {classes: CANONICAL_CLASSES, competitionYear})
-      │  uses categories.findCategory(), noc.countryNameToNoc(), justgo.parseAustralianDate()/resolveClubField() (which reads clubs.CLUB_ABBREVIATIONS)
+      │  uses categories.findCategory(), noc.countryNameToNoc(), justgo.parseAustralianDate()/extractClubIds()/resolveClubField() (scoped via clubs.buildScopedAbbreviations())
       ▼
 { rows, errors, warnings }
       │
@@ -300,16 +305,23 @@ which is what makes them unit-testable under Node.
   early columns (FirstName/LastName/DOB/Gender/Country) by name and throws a
   clear error if JustGo's layout ever shifts. `parseJustGoCsv(text)` →
   `JustGoRecord[]`. `parseAustralianDate(d)` parses `D/M/YYYY`, returning
-  `null` (not throwing) on bad input. `resolveClubField(org)` (FR10) splits a
-  comma-separated `"Name (CLxxxxx)"` list, maps each club ID through
-  `clubs.CLUB_ABBREVIATIONS`, and returns `{club, unknownClubIds}` — the
-  latter surfaced by `transform.js` as non-blocking warnings.
+  `null` (not throwing) on bad input. `extractClubIds(org)` (FR10) pulls just
+  the club IDs out of a `"Name (CLxxxxx)"` list, with no abbreviation lookup
+  — used up front to compute the disambiguation scope. `resolveClubField(org,
+  abbreviations)` (FR10) then maps each club ID in the same list through the
+  given `Map<clubId, abbreviation>` and returns `{club, unknownClubIds}` —
+  the latter surfaced by `transform.js` as non-blocking warnings. Both share
+  a private `parseOrganisationSegments(org)` helper.
 - **`clubs.js`** — `CLUB_DIRECTORY`: hand-maintained `[clubId, abbreviation]`
-  pairs (kept in sync with [`club-abbreviations.md`](club-abbreviations.md)).
-  `CLUB_ABBREVIATIONS: Map<clubId, string>` is derived from it at module
-  load: any abbreviation shared by more than one club in the directory is
-  suffixed with `-<club number>` for every club sharing it, so collisions
-  never need a hand-picked tiebreaker.
+  pairs (kept in sync with [`club-abbreviations.md`](club-abbreviations.md)),
+  exposed un-disambiguated as `CLUB_BASE_ABBREVIATIONS: Map<clubId,
+  string>`. `buildScopedAbbreviations(clubIds)` takes just the club IDs
+  actually present in one call's scope and suffixes an abbreviation with
+  `-<club number>` only for the *distinct* clubs among that given set that
+  share it — a clash elsewhere in the full directory that nobody in this
+  scope belongs to is irrelevant. `transform.js` calls this once per
+  `generateImportRows` call, scoped to every club referenced by a competing
+  entrant (FR4), not the whole directory.
 - **`categories.js`** — `findCategory(classDef, age)` linear-scans a class's
   `categories: [{catId, firstYear, lastYear}]` for `firstYear <= age <=
   lastYear`, returning `null` on no match. Pure, no XML/DOM dependency —
@@ -444,15 +456,16 @@ resolved.
 ## 5. Testing strategy
 
 `node --test test/*.test.js` (`npm test`), Node's built-in test runner, no
-external devDependencies. 45/45 passing as of this writing.
+external devDependencies. 58/58 passing as of this writing.
 
 | File | Covers |
 |---|---|
 | `csv.test.js` | quoted-comma fields, `""`-escaping, the `\r\r\n` artifact, serialize round-trip |
-| `justgo.test.js` | Australian date parsing, club-suffix stripping (incl. mid-string preservation), `assertStableHeader`, end-to-end parse of the real example CSV |
+| `justgo.test.js` | Australian date parsing, `extractClubIds`/`resolveClubField` (multi-club splitting, unknown-club fallback, no-code passthrough), `assertStableHeader`, end-to-end parse of the real example CSV |
+| `clubs.test.js` | `CLUB_BASE_ABBREVIATIONS` un-disambiguated lookups, `buildScopedAbbreviations` suffixing both clubs on an in-scope clash, leaving an out-of-scope clash unsuffixed, ignoring repeats of one club ID, omitting unknown club IDs |
 | `categories.test.js` | `findCategory` range selection, no-categories case, missing classDef |
 | `canonicalClasses.test.js` | shape of the built-in table (14 classes; the 4 with 10 categories each; the 10 with none) |
-| `transform.test.js` | full end-to-end against the real example CSV (6 rows, zero errors/warnings), output row shape, unrecognized-class error, out-of-range-age error, no-categories class producing a blank category (not an error), unmapped-country warning |
+| `transform.test.js` | full end-to-end against the real example CSV (6 rows, zero errors/warnings), output row shape, unrecognized-class error, out-of-range-age error, no-categories class producing a blank category (not an error), unmapped-country warning, club-abbreviation disambiguation scoped to competing entrants (in-scope clash, out-of-scope clash, non-competing record excluded from scope) |
 | `transform.c2.test.js` | hand-crafted fixtures (the real example file has no C2 usage): valid pair, partner's other solo class still emitted separately, blank/not-found/ambiguous partner name, gender mismatch, missing crew `ClassId` |
 | `nameCase.test.js` | `toUpperFamilyCase`/`toTitleGivenCase` on plain and hyphenated/multi-word values, `normalizeRowNames` touching only the four name fields |
 | `forerunners.test.js` | `buildForerunnerRows` shape and order (2 rows, `classId: "FR"`, blank Given Name/Category, `categoryAge: null`) |

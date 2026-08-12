@@ -14,23 +14,26 @@ a club's abbreviation here, make the matching edit in `clubs.js`.
 
 ## Disambiguation rule
 
-When a club's abbreviation is shared by another club **anywhere in this list**
-(not just within one player's memberships, and regardless of state — a
-player's club list can mix clubs from different states, so disambiguation
-must be global), the output abbreviation for **every** club sharing that
-abbreviation is suffixed with `-<club number>`, where `<club number>` is the
-numeric part of the Club ID with leading zeros stripped (e.g. `CL000229` → `229`).
-Clubs with a unique abbreviation are output as-is, with no suffix.
+This table lists every club's abbreviation in isolation — but the app never
+disambiguates against the *whole* table. A suffix is only added when **both**
+clashing clubs actually appear among **this event's competing entrants**
+(computed fresh per import, from every record with at least one class token).
+A same-abbreviation clash elsewhere in this list that nobody in the event
+belongs to must not add a `-<club number>` suffix; that would just be noise.
 
-Example — JustGo field:
+Example — a JustGo file where the only club with a "DCC" abbreviation entered
+is Derwent Canoe Club (Darwin Canoe Club, the other "DCC", isn't in this
+event at all):
+
 `Derwent Canoe Club (CL000229),Tasmanian Sea Canoeing Club Inc. (CL000312)`
+→ `DCC,TSCC` — **no suffix**, since Darwin Canoe Club never appears in this
+event's roster.
 
-- `TSCC` is unique → stays `TSCC`.
-- `DCC` is shared with Darwin Canoe Club (CL000335) → becomes `DCC-229`.
-- Output: `DCC-229,TSCC`
-
-Another example — Swan Canoe Club (CL000305) shares `SCC` with Shepparton
-Canoe Club (CL000299), so it is output as `SCC-305` (not `SCC`).
+If a *different* event's JustGo file has entrants from **both** Derwent
+Canoe Club and Darwin Canoe Club, then — and only then — both are
+disambiguated: `DCC-229` and `DCC-335` respectively. `<club number>` is the
+numeric part of the Club ID with leading zeros stripped (e.g. `CL000229` →
+`229`).
 
 | Club ID | Abbreviation | Club Name | State |
 |---|---|---|---|
@@ -168,8 +171,9 @@ worth a second opinion:
 - **GCPC** for "Gold Coast Paddlesports K&C Club" — the "K&C" portion was
   dropped for readability and may need to be represented.
 - **AKC**, **BCC**, **DCC**, **FCC**, **MCC**, **NWCC**, **SCC**, **SCPC**,
-  **TCC** are each shared by two or three clubs (see the table above) — in
-  the app's output these are automatically disambiguated as e.g. `FCC-234`
-  vs. `FCC-236`, but if any of these clubs would rather have a short,
+  **TCC** are each shared by two or three clubs (see the table above) — if
+  two of them ever enter the same event, they're automatically
+  disambiguated as e.g. `FCC-234` vs. `FCC-236` (see the Disambiguation rule
+  above). If any of these clubs would rather always have a short,
   human-chosen abbreviation instead of a numeric suffix, edit its entry in
   `docs/js/clubs.js` directly.
