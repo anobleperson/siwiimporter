@@ -8,6 +8,7 @@ import { formatClipboardRows } from "./clipboardFormat.js";
 import { normalizeRowNames } from "./nameCase.js";
 import { buildForerunnerRows } from "./forerunners.js";
 import { allocateBibs } from "./bibAllocation.js";
+import { TEMPLATES } from "./templates.js";
 
 const justgoInput = document.getElementById("justgo-file");
 const yearInputs = document.querySelectorAll('input[name="race-year"]');
@@ -20,6 +21,7 @@ const errorsListEl = document.getElementById("errors-list");
 const warningsEl = document.getElementById("warnings");
 const warningsListEl = document.getElementById("warnings-list");
 const previewEl = document.getElementById("preview");
+const templatesListEl = document.getElementById("templates-list");
 const downloadBtn = document.getElementById("download-btn");
 const copyBtn = document.getElementById("copy-btn");
 const statusEl = document.getElementById("status");
@@ -35,6 +37,8 @@ for (const input of yearInputs) {
   if (!label) continue;
   label.textContent = input.value === "next" ? String(thisYear + 1) : String(thisYear);
 }
+
+renderTemplates();
 
 justgoInput.addEventListener("change", run);
 for (const input of yearInputs) {
@@ -149,6 +153,22 @@ function showCopyFeedback(message) {
   copyBtnResetTimer = window.setTimeout(() => {
     copyBtn.textContent = copyBtnDefaultLabel;
   }, 1500);
+}
+
+function renderTemplates() {
+  for (const template of TEMPLATES) {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = template.file;
+    a.setAttribute("download", "");
+    a.textContent = template.name;
+    li.appendChild(a);
+    const desc = document.createElement("span");
+    desc.className = "template-description";
+    desc.textContent = ` — ${template.description}`;
+    li.appendChild(desc);
+    templatesListEl.appendChild(li);
+  }
 }
 
 function renderFatal(err) {

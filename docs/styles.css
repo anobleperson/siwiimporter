@@ -92,6 +92,10 @@ body {
   padding-left: 1.25rem;
 }
 
+.template-description {
+  color: #667085;
+}
+
 .panel {
   border: 1px solid var(--border);
   border-radius: 8px;
